@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Plus, CheckCircle2, XCircle, Eye, X } from "lucide-react";
 import { apiFetch, apiFetchFull } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
@@ -125,6 +126,15 @@ export default function InspectionPage() {
   });
 
   const [selectedRecord, setSelectedRecord] = useState<InspectionRecord | null>(null);
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const highlightId = searchParams.get('highlight');
+    if (highlightId && records.length > 0) {
+      const target = records.find(r => r.id === highlightId);
+      if (target) setSelectedRecord(target);
+    }
+  }, [searchParams, records]);
 
   useEffect(() => {
     fetchRecords();

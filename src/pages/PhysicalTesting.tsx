@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { apiFetch, apiFetchFull } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
 import { Eye, X, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
@@ -76,6 +77,14 @@ function resultClass(r: string | undefined) {
   return "text-gray-500";
 }
 
+function calcElongationResult(r: TestRecord): string | null {
+  if (r.elongationResult) return r.elongationResult;
+  if (r.elongationAtBreak != null && r.elongationTarget != null && r.elongationTarget > 0) {
+    return r.elongationAtBreak >= r.elongationTarget * 0.85 ? 'pass' : 'fail';
+  }
+  return null;
+}
+
 export default function PhysicalTesting() {
   const [records, setRecords] = useState<TestRecord[]>([]);
   const [inspectionBatches, setInspectionBatches] = useState<InspectionBatchOption[]>([]);
@@ -108,6 +117,16 @@ export default function PhysicalTesting() {
   });
 
   const [selectedRecord, setSelectedRecord] = useState<TestRecord | null>(null);
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const highlightId = searchParams.get('highlight');
+    if (highlightId && records.length > 0) {
+      const target = records.find(r => r.id === highlightId);
+      if (target) setSelectedRecord(target);
+    }
+  }, [searchParams, records]);
+
   const [inspectionDetail, setInspectionDetail] = useState<InspectionDetail | null>(null);
 
   const [overviewInspectionId, setOverviewInspectionId] = useState("");
@@ -277,16 +296,18 @@ export default function PhysicalTesting() {
   });
 
   const getOverallStatus = () => {
-    if (!inspectionDetail && testsForOverview.length === 0) return "unknown";
-    const results: string[] = [];
-    if (inspectionDetail) {
-      results.push(inspectionDetail.overallResult || "pass");
-    }
-    testsForOverview.forEach((t) => {
-      if (t.overallResult) results.push(t.overallResult);
-    });
-    if (results.length === 0) return "unknown";
-    return results.every((r) => r === "pass") ? "pass" : "fail";
+    const hasInspection = !!inspectionDetail;
+    const hasHardness = !!hardnessTest;
+    const hasTensile = !!tensileTest;
+    const hasCompression = !!compressionTest;
+    const allDone = hasInspection && hasHardness && hasTensile && hasCompression;
+    if (!allDone) return "incomplete";
+    const allPass = inspectionDetail?.overallResult === "pass"
+      && hardnessTest?.hardnessResult === "pass"
+      && tensileTest?.tensileStrengthResult === "pass"
+      && calcElongationResult(tensileTest!) === "pass"
+      && compressionTest?.compressionSetResult === "pass";
+    return allPass ? "pass" : "fail";
   };
 
   const releaseAdvice = () => {
@@ -477,8 +498,8 @@ export default function PhysicalTesting() {
                         <span className="ml-1">{tensileTest.elongationAtBreak}%</span>
                         <span className="text-gray-500 text-xs ml-1">/ {tensileTest.elongationTarget}%</span>
                       </div>
-                      <div className={`${resultClass(tensileTest.elongationResult)}`}>
-                        判定: {tensileTest.elongationResult === "pass" ? "合格" : "不合格"}
+                      <div className={`${resultClass(calcElongationResult(tensileTest))}`}>
+                        判定: {calcElongationResult(tensileTest) === "pass" ? "合格" : calcElongationResult(tensileTest) === "fail" ? "不合格" : "未判定"}
                       </div>
                     </div>
                   ) : (
@@ -516,7 +537,7 @@ export default function PhysicalTesting() {
               </div>
 
               <div className="text-xs text-gray-500 pt-2 border-t border-surface-border">
-                提示:综合判定取尺寸检测、硬度、拉伸强度、延伸率、压缩变形五项同时合格才算整体合格。如有任一项不合格,建议报废或返工。
+                提示:综合判定需尺寸检测、硬度、拉伸强度、延伸率、压缩变形五项全部完成后才给出放行建议。五项全合格才建议放行,有不合格则建议报废或返工,缺项则显示待完整检测。
               </div>
             </div>
           )}
@@ -700,11 +721,11 @@ export default function PhysicalTesting() {
                               <td className="table-cell">
                                 <div className="flex items-center gap-2">
                                   <span>{r.elongationAtBreak}% <span className="text-gray-600 text-xs">/ {r.elongationTarget}%</span></span>
-                                  {r.elongationResult != null && (
-                                    <span className={r.elongationResult === "pass" ? "badge-pass" : "badge-fail"}>
-                                      {r.elongationResult === "pass" ? "合格" : "不合格"}
+                                  {(() => { const er = calcElongationResult(r); return er != null && (
+                                    <span className={er === "pass" ? "badge-pass" : "badge-fail"}>
+                                      {er === "pass" ? "合格" : "不合格"}
                                     </span>
-                                  )}
+                                  ); })()}
                                 </div>
                               </td>
                             </>
@@ -792,7 +813,7 @@ export default function PhysicalTesting() {
                     </div>
                     <div>
                       <p className="text-xs text-gray-500">延伸率 (%)</p>
-                      <p className={`text-sm ${selectedRecord.elongationResult === "pass" ? "text-pass" : selectedRecord.elongationResult === "fail" ? "text-fail" : ""}`}>
+                      <p className={`text-sm ${(() => { const er = calcElongationResult(selectedRecord); return er === "pass" ? "text-pass" : er === "fail" ? "text-fail" : ""; })()}`}>
                         {selectedRecord.elongationAtBreak} <span className="text-gray-600 text-xs">/ 目标 {selectedRecord.elongationTarget}</span>
                       </p>
                     </div>

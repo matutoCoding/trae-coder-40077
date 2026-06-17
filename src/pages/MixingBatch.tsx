@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Plus, Thermometer, Eye, X } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
@@ -18,15 +18,15 @@ interface MixBatch {
 }
 
 const statusBadgeMap: Record<string, string> = {
-  pending: "badge-warn",
+  pending: "badge-info",
   mixing: "badge-info",
   completed: "badge-pass",
   abnormal: "badge-fail",
 };
 
 const statusLabelMap: Record<string, string> = {
-  pending: "待混炼",
-  mixing: "混炼中",
+  pending: "处理中",
+  mixing: "处理中",
   completed: "已完成",
   abnormal: "异常",
 };
@@ -81,6 +81,15 @@ export default function MixingBatch() {
   });
 
   const [selectedBatch, setSelectedBatch] = useState<MixBatch | null>(null);
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const highlightId = searchParams.get('highlight');
+    if (highlightId && batches.length > 0) {
+      const target = batches.find(b => b.id === highlightId);
+      if (target) setSelectedBatch(target);
+    }
+  }, [searchParams, batches]);
 
   useEffect(() => {
     fetchBatches();
@@ -187,8 +196,7 @@ export default function MixingBatch() {
               <label className="block text-xs text-gray-500 mb-1.5">状态</label>
               <select className="input-field w-full" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                 <option value="">全部状态</option>
-                <option value="pending">待混炼</option>
-                <option value="mixing">混炼中</option>
+                <option value="processing">处理中</option>
                 <option value="completed">已完成</option>
                 <option value="abnormal">异常</option>
               </select>

@@ -11,8 +11,16 @@ router.get('/', (req: Request, res: Response): void => {
   let sql = 'SELECT * FROM milling_batches WHERE 1=1'
   const params: unknown[] = []
   if (status) {
-    sql += ' AND status = ?'
-    params.push(status)
+    if (status === 'processing') {
+      sql += ' AND status IN (?, ?)'
+      params.push('pending', 'milling')
+    } else if (status === 'abnormal') {
+      sql += ' AND status = ?'
+      params.push('abnormal')
+    } else {
+      sql += ' AND status = ?'
+      params.push(status)
+    }
   }
   if (keyword) {
     sql += ' AND (batch_no LIKE ? OR operator LIKE ?)'

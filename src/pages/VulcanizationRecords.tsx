@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Eye, X } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
 
@@ -18,15 +18,17 @@ interface VulcanRecord {
 }
 
 const statusBadgeMap: Record<string, string> = {
+  in_progress: "badge-info",
   completed: "badge-pass",
   abnormal: "badge-fail",
-  timeout: "badge-warn",
+  timeout: "badge-fail",
 };
 
 const statusLabelMap: Record<string, string> = {
-  completed: "正常",
+  in_progress: "处理中",
+  completed: "已完成",
   abnormal: "异常",
-  timeout: "超时",
+  timeout: "异常",
 };
 
 const defaultRecords: VulcanRecord[] = [
@@ -54,6 +56,15 @@ export default function VulcanizationRecords() {
   });
 
   const [selectedRecord, setSelectedRecord] = useState<VulcanRecord | null>(null);
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const highlightId = searchParams.get('highlight');
+    if (highlightId && records.length > 0) {
+      const target = records.find(r => r.id === highlightId);
+      if (target) setSelectedRecord(target);
+    }
+  }, [searchParams, records]);
 
   useEffect(() => {
     fetchRecords();
@@ -125,9 +136,9 @@ export default function VulcanizationRecords() {
               <label className="block text-xs text-gray-500 mb-1.5">状态</label>
               <select className="input-field w-full" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                 <option value="">全部状态</option>
-                <option value="completed">正常</option>
+                <option value="processing">处理中</option>
+                <option value="completed">已完成</option>
                 <option value="abnormal">异常</option>
-                <option value="timeout">超时</option>
               </select>
             </div>
             <div className="min-w-[140px]">

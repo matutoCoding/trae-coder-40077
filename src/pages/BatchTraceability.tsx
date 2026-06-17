@@ -366,7 +366,16 @@ export default function BatchTraceability() {
                             )}
                             {hasData && stageRouteMap[stageItem.stage] && (
                               <button
-                                onClick={() => navigate(stageRouteMap[stageItem.stage])}
+                                onClick={() => {
+                                  const dataId = (stageData as Record<string, unknown>)?.id as string;
+                                  if (stageItem.stage === 'formula' && dataId) {
+                                    navigate(`/formulas/${dataId}`);
+                                  } else if (dataId) {
+                                    navigate(`${stageRouteMap[stageItem.stage]}?highlight=${dataId}`);
+                                  } else {
+                                    navigate(stageRouteMap[stageItem.stage]);
+                                  }
+                                }}
                                 className="p-1.5 rounded-md hover:bg-surface-lighter text-gray-400 hover:text-amber transition-colors"
                                 title={`跳转到${stageLabelMap[stageItem.stage]}记录`}
                               >
