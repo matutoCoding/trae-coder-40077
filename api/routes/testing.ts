@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../database.js'
+import { generateBatchNo } from '../utils.js'
 
 const router = Router()
 
@@ -29,8 +30,8 @@ router.get('/', (req: Request, res: Response): void => {
 router.post('/', (req: Request, res: Response): void => {
   const db = getDb()
   const { batch_no, inspection_id, tester, hardness_shore_a, hardness_target, tensile_strength, tensile_strength_target, elongation_at_break, elongation_target, compression_set, compression_set_target } = req.body
-  if (!batch_no || !inspection_id || !tester) {
-    res.status(400).json({ success: false, error: '批次号、检验记录和测试员为必填项' })
+  if (!inspection_id || !tester) {
+    res.status(400).json({ success: false, error: '检验记录和测试员为必填项' })
     return
   }
   const insp = db.prepare('SELECT id FROM inspection_records WHERE id = ?').get(inspection_id)
@@ -38,19 +39,24 @@ router.post('/', (req: Request, res: Response): void => {
     res.status(400).json({ success: false, error: '检验记录不存在' })
     return
   }
+  const finalBatchNo = batch_no || generateBatchNo('PT-', 'physical_tests')
   const hardnessResult = hardness_shore_a !== undefined && hardness_target !== undefined
     ? (Math.abs(hardness_shore_a - hardness_target) <= 3 ? 'pass' : 'fail') : null
   const tensileResult = tensile_strength !== undefined && tensile_strength_target !== undefined
     ? (tensile_strength >= tensile_strength_target * 0.85 ? 'pass' : 'fail') : null
   const compressionResult = compression_set !== undefined && compression_set_target !== undefined
     ? (compression_set <= compression_set_target * 1.15 ? 'pass' : 'fail') : null
-  const overallResult = hardnessResult && tensileResult && compressionResult
-    ? (hardnessResult === 'pass' && tensileResult === 'pass' && compressionResult === 'pass' ? 'pass' : 'fail') : null
+
+  const results = [hardnessResult, tensileResult, compressionResult].filter(r => r !== null)
+  let overallResult: string | null = null
+  if (results.length > 0) {
+    overallResult = results.some(r => r === 'fail') ? 'fail' : 'pass'
+  }
 
   const id = uuidv4()
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19)
   db.prepare(`INSERT INTO physical_tests (id, batch_no, inspection_id, tester, hardness_shore_a, hardness_target, hardness_result, tensile_strength, tensile_strength_target, tensile_strength_result, elongation_at_break, elongation_target, compression_set, compression_set_target, compression_set_result, overall_result, tested_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    id, batch_no, inspection_id, tester,
+    id, finalBatchNo, inspection_id, tester,
     hardness_shore_a || null, hardness_target || null, hardnessResult,
     tensile_strength || null, tensile_strength_target || null, tensileResult,
     elongation_at_break || null, elongation_target || null,

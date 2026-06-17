@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../database.js'
+import { generateBatchNo } from '../utils.js'
 
 const router = Router()
 
@@ -29,8 +30,8 @@ router.get('/', (req: Request, res: Response): void => {
 router.post('/', (req: Request, res: Response): void => {
   const db = getDb()
   const { batch_no, mixing_batch_id, machine_no, operator, thickness_target } = req.body
-  if (!batch_no || !mixing_batch_id || !machine_no || !operator) {
-    res.status(400).json({ success: false, error: '批次号、密炼批次、机台号和操作员为必填项' })
+  if (!mixing_batch_id || !machine_no || !operator) {
+    res.status(400).json({ success: false, error: '密炼批次、机台号和操作员为必填项' })
     return
   }
   const mixing = db.prepare('SELECT id FROM mixing_batches WHERE id = ?').get(mixing_batch_id)
@@ -38,9 +39,10 @@ router.post('/', (req: Request, res: Response): void => {
     res.status(400).json({ success: false, error: '密炼批次不存在' })
     return
   }
+  const finalBatchNo = batch_no || generateBatchNo('KL-', 'milling_batches')
   const id = uuidv4()
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19)
-  db.prepare('INSERT INTO milling_batches (id, batch_no, mixing_batch_id, machine_no, operator, thickness_target, start_time, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, batch_no, mixing_batch_id, machine_no, operator, thickness_target || null, now, 'in_progress', now)
+  db.prepare('INSERT INTO milling_batches (id, batch_no, mixing_batch_id, machine_no, operator, thickness_target, start_time, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, finalBatchNo, mixing_batch_id, machine_no, operator, thickness_target || null, now, 'in_progress', now)
   const batch = db.prepare('SELECT * FROM milling_batches WHERE id = ?').get(id)
   res.status(201).json({ success: true, data: batch })
 })

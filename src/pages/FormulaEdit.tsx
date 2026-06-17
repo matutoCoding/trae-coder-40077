@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Plus, Trash2, Save, X } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
+import { useToast } from "@/components/Toast";
 
 interface MaterialRow {
   name: string;
@@ -14,6 +15,7 @@ interface FormulaData {
   name: string;
   code: string;
   description: string;
+  createdBy: string;
   materials: MaterialRow[];
 }
 
@@ -23,11 +25,13 @@ export default function FormulaEdit() {
   const { id } = useParams();
   const navigate = useNavigate();
   const isEdit = Boolean(id);
+  const { showToast } = useToast();
 
   const [form, setForm] = useState<FormulaData>({
     name: "",
     code: "",
     description: "",
+    createdBy: "",
     materials: [{ ...emptyMaterial }],
   });
 
@@ -39,6 +43,7 @@ export default function FormulaEdit() {
             name: d.name || "",
             code: d.code || "",
             description: d.description || "",
+            createdBy: d.createdBy || "",
             materials: d.materials?.length ? d.materials : [{ ...emptyMaterial }],
           });
         }
@@ -74,12 +79,24 @@ export default function FormulaEdit() {
   const handleSubmit = () => {
     const url = isEdit ? `/api/formulas/${id}` : "/api/formulas";
     const method = isEdit ? "PUT" : "POST";
+    const { name, code, description, createdBy, materials } = form;
     apiFetch(url, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify({
+        name,
+        code,
+        description,
+        created_by: createdBy,
+        materials: materials.map((m) => ({ ...m })),
+      }),
     }).then((d) => {
-      if (d !== null) navigate(`/formulas${isEdit ? `/${id}` : ""}`);
+      if (d !== null) {
+        showToast(isEdit ? "配方保存成功" : "配方创建成功", "success");
+        navigate("/formulas");
+      } else {
+        showToast(isEdit ? "配方保存失败" : "配方创建失败", "error");
+      }
     });
   };
 
@@ -111,6 +128,16 @@ export default function FormulaEdit() {
                 value={form.code}
                 onChange={(e) => updateField("code", e.target.value)}
                 placeholder="如 FP-0001"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1.5">创建人</label>
+              <input
+                type="text"
+                className="input-field w-full"
+                value={form.createdBy}
+                onChange={(e) => updateField("createdBy", e.target.value)}
+                placeholder="请输入创建人"
               />
             </div>
           </div>

@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../database.js'
+import { generateBatchNo } from '../utils.js'
 
 const router = Router()
 
@@ -29,8 +30,8 @@ router.get('/', (req: Request, res: Response): void => {
 router.post('/', (req: Request, res: Response): void => {
   const db = getDb()
   const { batch_no, milling_batch_id, mold_no, machine_no, operator, mold_temp_target, vulcanization_time_target } = req.body
-  if (!batch_no || !milling_batch_id || !mold_no || !machine_no || !operator) {
-    res.status(400).json({ success: false, error: '批次号、开炼批次、模具号、机台号和操作员为必填项' })
+  if (!milling_batch_id || !mold_no || !machine_no || !operator) {
+    res.status(400).json({ success: false, error: '开炼批次、模具号、机台号和操作员为必填项' })
     return
   }
   const milling = db.prepare('SELECT id FROM milling_batches WHERE id = ?').get(milling_batch_id)
@@ -38,9 +39,10 @@ router.post('/', (req: Request, res: Response): void => {
     res.status(400).json({ success: false, error: '开炼批次不存在' })
     return
   }
+  const finalBatchNo = batch_no || generateBatchNo('VL-', 'vulcanization_batches')
   const id = uuidv4()
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19)
-  db.prepare('INSERT INTO vulcanization_batches (id, batch_no, milling_batch_id, mold_no, machine_no, operator, mold_temp_target, vulcanization_time_target, start_time, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, batch_no, milling_batch_id, mold_no, machine_no, operator, mold_temp_target || null, vulcanization_time_target || null, now, 'in_progress', now)
+  db.prepare('INSERT INTO vulcanization_batches (id, batch_no, milling_batch_id, mold_no, machine_no, operator, mold_temp_target, vulcanization_time_target, start_time, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, finalBatchNo, milling_batch_id, mold_no, machine_no, operator, mold_temp_target || null, vulcanization_time_target || null, now, 'in_progress', now)
   const batch = db.prepare('SELECT * FROM vulcanization_batches WHERE id = ?').get(id)
   res.status(201).json({ success: true, data: batch })
 })

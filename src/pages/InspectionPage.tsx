@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Plus, CheckCircle2, XCircle } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
+import { useToast } from "@/components/Toast";
 
 interface InspectionRecord {
   id: string;
@@ -30,8 +31,14 @@ const defaultRecords: InspectionRecord[] = [
   { id: "4", batchNo: "IC-20240618-004", deburringBatchId: "DB-20240618-004", inspector: "赵工", innerDiameter: 25.05, innerDiameterTarget: 25.0, innerDiameterTolerance: 0.15, outerDiameter: 30.03, outerDiameterTarget: 30.0, outerDiameterTolerance: 0.15, crossSection: 2.49, crossSectionTarget: 2.5, crossSectionTolerance: 0.1, innerDiameterResult: "pass", outerDiameterResult: "pass", crossSectionResult: "pass", overallResult: "pass", inspectedAt: "2024-06-18 10:15" },
 ];
 
-interface NewInspection {
+interface DeburringBatchOption {
+  id: string;
   batchNo: string;
+}
+
+interface NewInspection {
+  deburringBatchId: string;
+  inspector: string;
   innerDiameter: string;
   outerDiameter: string;
   crossSection: string;
@@ -44,7 +51,8 @@ interface NewInspection {
 }
 
 const emptyInspection: NewInspection = {
-  batchNo: "",
+  deburringBatchId: "",
+  inspector: "",
   innerDiameter: "",
   outerDiameter: "",
   crossSection: "",
@@ -98,11 +106,14 @@ function ToleranceBar({ value, target, tolerance, label }: { value: number; targ
 
 export default function InspectionPage() {
   const [records, setRecords] = useState<InspectionRecord[]>(defaultRecords);
+  const [deburringBatches, setDeburringBatches] = useState<DeburringBatchOption[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<NewInspection>(emptyInspection);
+  const { showToast } = useToast();
 
   useEffect(() => {
     apiFetch<InspectionRecord[]>("/api/inspection").then((d) => d && setRecords(d));
+    apiFetch<DeburringBatchOption[]>("/api/deburring").then((d) => d && setDeburringBatches(d));
   }, []);
 
   const updateField = (field: keyof NewInspection, value: string) => {
@@ -110,6 +121,10 @@ export default function InspectionPage() {
   };
 
   const handleSubmit = () => {
+    if (!form.deburringBatchId || !form.inspector || !form.innerDiameter || !form.outerDiameter || !form.crossSection) {
+      showToast("请填写所有必填项", "error");
+      return;
+    }
     const vals = {
       innerDiameter: Number(form.innerDiameter),
       outerDiameter: Number(form.outerDiameter),
@@ -130,10 +145,34 @@ export default function InspectionPage() {
     apiFetch("/api/inspection", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...vals, batchNo: form.batchNo, overallResult }),
-    }).then((ok) => ok !== null && apiFetch<InspectionRecord[]>("/api/inspection").then((d) => {
-      if (d) { setRecords(d); setShowForm(false); setForm(emptyInspection); }
-    }));
+      body: JSON.stringify({
+        deburring_batch_id: form.deburringBatchId,
+        inspector: form.inspector,
+        inner_diameter: vals.innerDiameter,
+        outer_diameter: vals.outerDiameter,
+        cross_section: vals.crossSection,
+        inner_diameter_target: vals.innerDiameterTarget,
+        inner_diameter_tolerance: vals.innerDiameterTolerance,
+        outer_diameter_target: vals.outerDiameterTarget,
+        outer_diameter_tolerance: vals.outerDiameterTolerance,
+        cross_section_target: vals.crossSectionTarget,
+        cross_section_tolerance: vals.crossSectionTolerance,
+        overall_result: overallResult,
+      }),
+    }).then((ok) => {
+      if (ok !== null) {
+        showToast("检测记录提交成功", "success");
+        apiFetch<InspectionRecord[]>("/api/inspection").then((d) => {
+          if (d) {
+            setRecords(d);
+            setShowForm(false);
+            setForm(emptyInspection);
+          }
+        });
+      } else {
+        showToast("检测记录提交失败", "error");
+      }
+    });
   };
 
   const currentPassed = form.innerDiameter && form.outerDiameter && form.crossSection
@@ -158,15 +197,32 @@ export default function InspectionPage() {
             <h3 className="font-display font-semibold text-sm">新增检测记录</h3>
           </div>
           <div className="card-body space-y-4">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1.5">批次号</label>
-              <input
-                type="text"
-                className="input-field w-full max-w-xs"
-                value={form.batchNo}
-                onChange={(e) => updateField("batchNo", e.target.value)}
-                placeholder="如 IC-20240618-005"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1.5">关联去毛边批次</label>
+                <select
+                  className="input-field w-full"
+                  value={form.deburringBatchId}
+                  onChange={(e) => updateField("deburringBatchId", e.target.value)}
+                >
+                  <option value="">选择去毛边批次</option>
+                  {deburringBatches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.batchNo}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1.5">检测员</label>
+                <input
+                  type="text"
+                  className="input-field w-full"
+                  value={form.inspector}
+                  onChange={(e) => updateField("inspector", e.target.value)}
+                  placeholder="检测员姓名"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">

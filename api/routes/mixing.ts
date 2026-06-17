@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../database.js'
+import { generateBatchNo } from '../utils.js'
 
 const router = Router()
 
@@ -31,8 +32,8 @@ router.get('/', (req: Request, res: Response): void => {
 router.post('/', (req: Request, res: Response): void => {
   const db = getDb()
   const { batch_no, formula_id, machine_no, operator, feeding_records } = req.body
-  if (!batch_no || !formula_id || !machine_no || !operator) {
-    res.status(400).json({ success: false, error: '批次号、配方、机台号和操作员为必填项' })
+  if (!formula_id || !machine_no || !operator) {
+    res.status(400).json({ success: false, error: '配方、机台号和操作员为必填项' })
     return
   }
   const formula = db.prepare('SELECT id FROM formulas WHERE id = ?').get(formula_id)
@@ -40,9 +41,10 @@ router.post('/', (req: Request, res: Response): void => {
     res.status(400).json({ success: false, error: '配方不存在' })
     return
   }
+  const finalBatchNo = batch_no || generateBatchNo('ML-', 'mixing_batches')
   const id = uuidv4()
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19)
-  db.prepare('INSERT INTO mixing_batches (id, batch_no, formula_id, machine_no, operator, start_time, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(id, batch_no, formula_id, machine_no, operator, now, 'in_progress', now)
+  db.prepare('INSERT INTO mixing_batches (id, batch_no, formula_id, machine_no, operator, start_time, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(id, finalBatchNo, formula_id, machine_no, operator, now, 'in_progress', now)
   if (feeding_records && Array.isArray(feeding_records)) {
     const insertFeed = db.prepare('INSERT INTO feeding_records (id, mixing_batch_id, material_name, material_code, weight, unit, sort_order, feed_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
     for (let i = 0; i < feeding_records.length; i++) {

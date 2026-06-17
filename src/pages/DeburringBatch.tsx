@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Plus } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
+import { useToast } from "@/components/Toast";
 import {
   PieChart,
   Pie,
@@ -38,6 +39,11 @@ const methodLabelMap: Record<string, string> = {
   mechanical: "机械",
 };
 
+interface VulcanizationBatchOption {
+  id: string;
+  batchNo: string;
+}
+
 const defaultBatches: DeburrBatch[] = [
   { id: "1", batchNo: "DB-20240618-001", vulcanizationBatchId: "VL-20240618-003", method: "freezing", operator: "赵师傅", totalCount: 500, qualifiedCount: 485, qualifiedRate: 97.0, status: "completed" },
   { id: "2", batchNo: "DB-20240618-002", vulcanizationBatchId: "VL-20240617-008", method: "mechanical", operator: "钱师傅", totalCount: 300, qualifiedCount: 288, qualifiedRate: 96.0, status: "completed" },
@@ -47,23 +53,50 @@ const defaultBatches: DeburrBatch[] = [
 
 export default function DeburringBatch() {
   const [batches, setBatches] = useState<DeburrBatch[]>(defaultBatches);
+  const [vulcanizationBatches, setVulcanizationBatches] = useState<VulcanizationBatchOption[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [vulcanizationBatchId, setVulcanizationBatchId] = useState("");
   const [method, setMethod] = useState("freezing");
+  const [operator, setOperator] = useState("");
   const [totalCount, setTotalCount] = useState("");
+  const { showToast } = useToast();
 
   useEffect(() => {
     apiFetch<DeburrBatch[]>("/api/deburring").then((d) => d && setBatches(d));
+    apiFetch<VulcanizationBatchOption[]>("/api/vulcanization").then((d) => d && setVulcanizationBatches(d));
   }, []);
 
   const handleCreate = () => {
+    if (!vulcanizationBatchId || !operator || !totalCount) {
+      showToast("请填写所有必填项", "error");
+      return;
+    }
     apiFetch("/api/deburring", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ vulcanizationBatchId, method, totalCount: Number(totalCount) }),
-    }).then((ok) => ok !== null && apiFetch<DeburrBatch[]>("/api/deburring").then((d) => {
-      if (d) { setBatches(d); setShowForm(false); setVulcanizationBatchId(""); setMethod("freezing"); setTotalCount(""); }
-    }));
+      body: JSON.stringify({
+        vulcanization_batch_id: vulcanizationBatchId,
+        method,
+        operator,
+        total_count: Number(totalCount),
+      }),
+    }).then((ok) => {
+      if (ok !== null) {
+        showToast("去毛边批次创建成功", "success");
+        apiFetch<DeburrBatch[]>("/api/deburring").then((d) => {
+          if (d) {
+            setBatches(d);
+            setShowForm(false);
+            setVulcanizationBatchId("");
+            setMethod("freezing");
+            setOperator("");
+            setTotalCount("");
+          }
+        });
+      } else {
+        showToast("去毛边批次创建失败", "error");
+      }
+    });
   };
 
   const completedBatches = batches.filter((b) => b.status === "completed");
@@ -92,13 +125,16 @@ export default function DeburringBatch() {
             <h3 className="font-display font-semibold text-sm">新建去毛边批次</h3>
           </div>
           <div className="card-body">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-xs text-gray-500 mb-1.5">关联硫化批次</label>
                 <select className="input-field w-full" value={vulcanizationBatchId} onChange={(e) => setVulcanizationBatchId(e.target.value)}>
                   <option value="">选择硫化批次</option>
-                  <option value="VL-20240618-003">VL-20240618-003</option>
-                  <option value="VL-20240617-008">VL-20240617-008</option>
+                  {vulcanizationBatches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.batchNo}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -108,6 +144,16 @@ export default function DeburringBatch() {
                   <option value="freezing">冷冻</option>
                   <option value="mechanical">机械</option>
                 </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1.5">操作员</label>
+                <input
+                  type="text"
+                  className="input-field w-full"
+                  value={operator}
+                  onChange={(e) => setOperator(e.target.value)}
+                  placeholder="操作员姓名"
+                />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1.5">总数</label>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Plus } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
+import { useToast } from "@/components/Toast";
 
 interface MillBatch {
   id: string;
@@ -29,6 +30,11 @@ const statusLabelMap: Record<string, string> = {
   abnormal: "异常",
 };
 
+interface MixingBatchOption {
+  id: string;
+  batchNo: string;
+}
+
 const defaultBatches: MillBatch[] = [
   { id: "1", batchNo: "KL-20240618-001", mixingBatchId: "ML-20240618-001", machineNo: "开炼机#1", operator: "张师傅", thickness: 2.3, thicknessTarget: 2.5, passCount: 8, sheetCount: 12, status: "completed" },
   { id: "2", batchNo: "KL-20240618-002", mixingBatchId: "ML-20240618-002", machineNo: "开炼机#2", operator: "李师傅", thickness: 2.1, thicknessTarget: 2.5, passCount: 5, sheetCount: 8, status: "milling" },
@@ -38,22 +44,50 @@ const defaultBatches: MillBatch[] = [
 
 export default function MillingBatch() {
   const [batches, setBatches] = useState<MillBatch[]>(defaultBatches);
+  const [mixingBatches, setMixingBatches] = useState<MixingBatchOption[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [mixingBatchId, setMixingBatchId] = useState("");
+  const [machineNo, setMachineNo] = useState("");
+  const [operator, setOperator] = useState("");
   const [thicknessTarget, setThicknessTarget] = useState("");
+  const { showToast } = useToast();
 
   useEffect(() => {
     apiFetch<MillBatch[]>("/api/milling").then((d) => d && setBatches(d));
+    apiFetch<MixingBatchOption[]>("/api/mixing").then((d) => d && setMixingBatches(d));
   }, []);
 
   const handleCreate = () => {
+    if (!mixingBatchId || !machineNo || !operator || !thicknessTarget) {
+      showToast("请填写所有必填项", "error");
+      return;
+    }
     apiFetch("/api/milling", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mixingBatchId, thicknessTarget: Number(thicknessTarget) }),
-    }).then((ok) => ok !== null && apiFetch<MillBatch[]>("/api/milling").then((d) => {
-      if (d) { setBatches(d); setShowForm(false); setMixingBatchId(""); setThicknessTarget(""); }
-    }));
+      body: JSON.stringify({
+        mixing_batch_id: mixingBatchId,
+        machine_no: machineNo,
+        operator,
+        thickness_target: Number(thicknessTarget),
+      }),
+    }).then((ok) => {
+      if (ok !== null) {
+        showToast("开炼批次创建成功", "success");
+        apiFetch<MillBatch[]>("/api/milling").then((d) => {
+          if (d) {
+            setBatches(d);
+            setShowForm(false);
+            setMixingBatchId("");
+            setMachineNo("");
+            setOperator("");
+            setThicknessTarget("");
+          }
+        });
+      } else {
+        showToast("开炼批次创建失败", "error");
+      }
+    });
   };
 
   return (
@@ -77,10 +111,32 @@ export default function MillingBatch() {
                 <label className="block text-xs text-gray-500 mb-1.5">关联密炼批次</label>
                 <select className="input-field w-full" value={mixingBatchId} onChange={(e) => setMixingBatchId(e.target.value)}>
                   <option value="">选择密炼批次</option>
-                  <option value="ML-20240618-001">ML-20240618-001</option>
-                  <option value="ML-20240618-002">ML-20240618-002</option>
-                  <option value="ML-20240618-003">ML-20240618-003</option>
+                  {mixingBatches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.batchNo}
+                    </option>
+                  ))}
                 </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1.5">机台</label>
+                <input
+                  type="text"
+                  className="input-field w-full"
+                  value={machineNo}
+                  onChange={(e) => setMachineNo(e.target.value)}
+                  placeholder="如 开炼机#1"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1.5">操作员</label>
+                <input
+                  type="text"
+                  className="input-field w-full"
+                  value={operator}
+                  onChange={(e) => setOperator(e.target.value)}
+                  placeholder="操作员姓名"
+                />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1.5">目标厚度 (mm)</label>

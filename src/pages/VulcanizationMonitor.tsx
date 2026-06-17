@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Clock, Flame } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
+import { useToast } from "@/components/Toast";
 import {
   PieChart,
   Pie,
@@ -34,6 +35,11 @@ const statusBadgeMap: Record<string, string> = {
   abnormal: "badge-fail",
 };
 
+interface MillingBatchOption {
+  id: string;
+  batchNo: string;
+}
+
 const defaultBatches: VulcanBatch[] = [
   { id: "1", batchNo: "VL-20240618-001", moldTemp: 168, moldTempTarget: 170, pressure: 12.5, vulcanizationTime: 180, vulcanizationTimeTarget: 300, status: "vulcanizing" },
   { id: "2", batchNo: "VL-20240618-002", moldTemp: 155, moldTempTarget: 170, pressure: 0, vulcanizationTime: 0, vulcanizationTimeTarget: 300, status: "preheating" },
@@ -43,22 +49,56 @@ const defaultBatches: VulcanBatch[] = [
 
 export default function VulcanizationMonitor() {
   const [batches, setBatches] = useState<VulcanBatch[]>(defaultBatches);
+  const [millingBatches, setMillingBatches] = useState<MillingBatchOption[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [formula, setFormula] = useState("");
+  const [millingBatchId, setMillingBatchId] = useState("");
   const [moldNo, setMoldNo] = useState("");
+  const [machineNo, setMachineNo] = useState("");
+  const [operator, setOperator] = useState("");
+  const [moldTempTarget, setMoldTempTarget] = useState("");
+  const [vulcanizationTimeTarget, setVulcanizationTimeTarget] = useState("");
+  const { showToast } = useToast();
 
   useEffect(() => {
     apiFetch<VulcanBatch[]>("/api/vulcanization").then((d) => d && setBatches(d));
+    apiFetch<MillingBatchOption[]>("/api/milling").then((d) => d && setMillingBatches(d));
   }, []);
 
   const handleCreate = () => {
+    if (!millingBatchId || !moldNo || !machineNo || !operator || !moldTempTarget || !vulcanizationTimeTarget) {
+      showToast("请填写所有必填项", "error");
+      return;
+    }
     apiFetch("/api/vulcanization", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ formula, moldNo }),
-    }).then((ok) => ok !== null && apiFetch<VulcanBatch[]>("/api/vulcanization").then((d) => {
-      if (d) { setBatches(d); setShowForm(false); setFormula(""); setMoldNo(""); }
-    }));
+      body: JSON.stringify({
+        milling_batch_id: millingBatchId,
+        mold_no: moldNo,
+        machine_no: machineNo,
+        operator,
+        mold_temp_target: Number(moldTempTarget),
+        vulcanization_time_target: Number(vulcanizationTimeTarget),
+      }),
+    }).then((ok) => {
+      if (ok !== null) {
+        showToast("硫化批次创建成功", "success");
+        apiFetch<VulcanBatch[]>("/api/vulcanization").then((d) => {
+          if (d) {
+            setBatches(d);
+            setShowForm(false);
+            setMillingBatchId("");
+            setMoldNo("");
+            setMachineNo("");
+            setOperator("");
+            setMoldTempTarget("");
+            setVulcanizationTimeTarget("");
+          }
+        });
+      } else {
+        showToast("硫化批次创建失败", "error");
+      }
+    });
   };
 
   return (
@@ -80,23 +120,67 @@ export default function VulcanizationMonitor() {
             <h3 className="font-display font-semibold text-sm">新建硫化批次</h3>
           </div>
           <div className="card-body">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs text-gray-500 mb-1.5">配方</label>
-                <select className="input-field w-full" value={formula} onChange={(e) => setFormula(e.target.value)}>
-                  <option value="">选择配方</option>
-                  <option value="NBR标准配方">NBR标准配方</option>
-                  <option value="EPDM耐热配方">EPDM耐热配方</option>
+                <label className="block text-xs text-gray-500 mb-1.5">关联开炼批次</label>
+                <select className="input-field w-full" value={millingBatchId} onChange={(e) => setMillingBatchId(e.target.value)}>
+                  <option value="">选择开炼批次</option>
+                  {millingBatches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.batchNo}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1.5">模具编号</label>
-                <select className="input-field w-full" value={moldNo} onChange={(e) => setMoldNo(e.target.value)}>
-                  <option value="">选择模具</option>
-                  <option value="M-001">M-001</option>
-                  <option value="M-002">M-002</option>
-                  <option value="M-003">M-003</option>
-                </select>
+                <input
+                  type="text"
+                  className="input-field w-full"
+                  value={moldNo}
+                  onChange={(e) => setMoldNo(e.target.value)}
+                  placeholder="如 M-001"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1.5">机台</label>
+                <input
+                  type="text"
+                  className="input-field w-full"
+                  value={machineNo}
+                  onChange={(e) => setMachineNo(e.target.value)}
+                  placeholder="机台编号"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1.5">操作员</label>
+                <input
+                  type="text"
+                  className="input-field w-full"
+                  value={operator}
+                  onChange={(e) => setOperator(e.target.value)}
+                  placeholder="操作员姓名"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1.5">目标模温 (°C)</label>
+                <input
+                  type="number"
+                  className="input-field w-full"
+                  value={moldTempTarget}
+                  onChange={(e) => setMoldTempTarget(e.target.value)}
+                  placeholder="如 170"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1.5">目标硫化时间 (秒)</label>
+                <input
+                  type="number"
+                  className="input-field w-full"
+                  value={vulcanizationTimeTarget}
+                  onChange={(e) => setVulcanizationTimeTarget(e.target.value)}
+                  placeholder="如 300"
+                />
               </div>
             </div>
             <div className="flex gap-2 mt-4">

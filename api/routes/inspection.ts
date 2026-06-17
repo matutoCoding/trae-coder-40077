@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../database.js'
+import { generateBatchNo } from '../utils.js'
 
 const router = Router()
 
@@ -29,8 +30,8 @@ router.get('/', (req: Request, res: Response): void => {
 router.post('/', (req: Request, res: Response): void => {
   const db = getDb()
   const { batch_no, deburring_batch_id, inspector, inner_diameter, inner_diameter_target, inner_diameter_tolerance, outer_diameter, outer_diameter_target, outer_diameter_tolerance, cross_section, cross_section_target, cross_section_tolerance } = req.body
-  if (!batch_no || !deburring_batch_id || !inspector) {
-    res.status(400).json({ success: false, error: '批次号、修边批次和检验员为必填项' })
+  if (!deburring_batch_id || !inspector) {
+    res.status(400).json({ success: false, error: '修边批次和检验员为必填项' })
     return
   }
   const deburr = db.prepare('SELECT id FROM deburring_batches WHERE id = ?').get(deburring_batch_id)
@@ -38,19 +39,24 @@ router.post('/', (req: Request, res: Response): void => {
     res.status(400).json({ success: false, error: '修边批次不存在' })
     return
   }
+  const finalBatchNo = batch_no || generateBatchNo('IC-', 'inspection_records')
   const idResult = inner_diameter !== undefined && inner_diameter_target !== undefined && inner_diameter_tolerance !== undefined
     ? (Math.abs(inner_diameter - inner_diameter_target) <= inner_diameter_tolerance ? 'pass' : 'fail') : null
   const odResult = outer_diameter !== undefined && outer_diameter_target !== undefined && outer_diameter_tolerance !== undefined
     ? (Math.abs(outer_diameter - outer_diameter_target) <= outer_diameter_tolerance ? 'pass' : 'fail') : null
   const csResult = cross_section !== undefined && cross_section_target !== undefined && cross_section_tolerance !== undefined
     ? (Math.abs(cross_section - cross_section_target) <= cross_section_tolerance ? 'pass' : 'fail') : null
-  const overallResult = idResult && odResult && csResult
-    ? (idResult === 'pass' && odResult === 'pass' && csResult === 'pass' ? 'pass' : 'fail') : null
+
+  const results = [idResult, odResult, csResult].filter(r => r !== null)
+  let overallResult: string | null = null
+  if (results.length > 0) {
+    overallResult = results.some(r => r === 'fail') ? 'fail' : 'pass'
+  }
 
   const id = uuidv4()
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19)
   db.prepare(`INSERT INTO inspection_records (id, batch_no, deburring_batch_id, inspector, inner_diameter, inner_diameter_target, inner_diameter_tolerance, outer_diameter, outer_diameter_target, outer_diameter_tolerance, cross_section, cross_section_target, cross_section_tolerance, inner_diameter_result, outer_diameter_result, cross_section_result, overall_result, inspected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    id, batch_no, deburring_batch_id, inspector,
+    id, finalBatchNo, deburring_batch_id, inspector,
     inner_diameter || null, inner_diameter_target || null, inner_diameter_tolerance || null,
     outer_diameter || null, outer_diameter_target || null, outer_diameter_tolerance || null,
     cross_section || null, cross_section_target || null, cross_section_tolerance || null,

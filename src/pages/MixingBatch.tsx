@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Thermometer, Eye } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
+import { useToast } from "@/components/Toast";
 
 interface MixBatch {
   id: string;
@@ -36,6 +37,12 @@ const defaultBatches: MixBatch[] = [
   { id: "4", batchNo: "ML-20240618-004", formulaId: "4", formula: { id: "4", name: "硅橡胶密封配方", code: "FP-0004" }, machineNo: "密炼机#3", operator: "赵师傅", dischargeTemp: 0, maxTemp: 0, status: "pending" },
 ];
 
+interface FormulaOption {
+  id: string;
+  name: string;
+  code: string;
+}
+
 interface FeedingRecord {
   time: string;
   material: string;
@@ -52,23 +59,47 @@ const feedingRecords: FeedingRecord[] = [
 
 export default function MixingBatch() {
   const [batches, setBatches] = useState<MixBatch[]>(defaultBatches);
+  const [formulas, setFormulas] = useState<FormulaOption[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [formula, setFormula] = useState("");
-  const [machine, setMachine] = useState("");
+  const [formulaId, setFormulaId] = useState("");
+  const [machineNo, setMachineNo] = useState("");
   const [operator, setOperator] = useState("");
+  const { showToast } = useToast();
 
   useEffect(() => {
     apiFetch<MixBatch[]>("/api/mixing").then((d) => d && setBatches(d));
+    apiFetch<FormulaOption[]>("/api/formulas").then((d) => d && setFormulas(d));
   }, []);
 
   const handleCreate = () => {
+    if (!formulaId || !machineNo || !operator) {
+      showToast("请填写所有必填项", "error");
+      return;
+    }
     apiFetch("/api/mixing", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ formula, machine, operator }),
-    }).then((ok) => ok !== null && apiFetch<MixBatch[]>("/api/mixing").then((d) => {
-      if (d) { setBatches(d); setShowForm(false); setFormula(""); setMachine(""); setOperator(""); }
-    }));
+      body: JSON.stringify({
+        formula_id: formulaId,
+        machine_no: machineNo,
+        operator,
+      }),
+    }).then((ok) => {
+      if (ok !== null) {
+        showToast("密炼批次创建成功", "success");
+        apiFetch<MixBatch[]>("/api/mixing").then((d) => {
+          if (d) {
+            setBatches(d);
+            setShowForm(false);
+            setFormulaId("");
+            setMachineNo("");
+            setOperator("");
+          }
+        });
+      } else {
+        showToast("密炼批次创建失败", "error");
+      }
+    });
   };
 
   return (
@@ -96,21 +127,24 @@ export default function MixingBatch() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs text-gray-500 mb-1.5">配方</label>
-                <select className="input-field w-full" value={formula} onChange={(e) => setFormula(e.target.value)}>
+                <select className="input-field w-full" value={formulaId} onChange={(e) => setFormulaId(e.target.value)}>
                   <option value="">选择配方</option>
-                  <option value="NBR标准配方 v3.2">NBR标准配方 v3.2</option>
-                  <option value="EPDM耐热配方 v2.1">EPDM耐热配方 v2.1</option>
-                  <option value="FKM耐油配方 v1.0">FKM耐油配方 v1.0</option>
+                  {formulas.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name} ({f.code})
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1.5">机台</label>
-                <select className="input-field w-full" value={machine} onChange={(e) => setMachine(e.target.value)}>
-                  <option value="">选择机台</option>
-                  <option value="密炼机#1">密炼机#1</option>
-                  <option value="密炼机#2">密炼机#2</option>
-                  <option value="密炼机#3">密炼机#3</option>
-                </select>
+                <input
+                  type="text"
+                  className="input-field w-full"
+                  value={machineNo}
+                  onChange={(e) => setMachineNo(e.target.value)}
+                  placeholder="如 密炼机#1"
+                />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1.5">操作员</label>

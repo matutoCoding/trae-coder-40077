@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { apiFetch } from "@/lib/utils";
+import { useToast } from "@/components/Toast";
 import {
   BarChart,
   Bar,
@@ -39,6 +40,11 @@ function getTestType(r: TestRecord): TestTab | null {
   return null;
 }
 
+interface InspectionBatchOption {
+  id: string;
+  batchNo: string;
+}
+
 const defaultRecords: TestRecord[] = [
   { id: "1", batchNo: "PT-20240618-001", tester: "张工", hardnessShoreA: 72, hardnessTarget: 70, hardnessResult: "pass", overallResult: "pass", testedAt: "2024-06-18 14:00" },
   { id: "2", batchNo: "PT-20240618-002", tester: "李工", hardnessShoreA: 78, hardnessTarget: 70, hardnessResult: "fail", overallResult: "fail", testedAt: "2024-06-18 13:30" },
@@ -55,10 +61,12 @@ const tabs: { key: TestTab; label: string }[] = [
 
 export default function PhysicalTesting() {
   const [records, setRecords] = useState<TestRecord[]>(defaultRecords);
+  const [inspectionBatches, setInspectionBatches] = useState<InspectionBatchOption[]>([]);
   const [activeTab, setActiveTab] = useState<TestTab>("hardness");
   const [showForm, setShowForm] = useState(false);
 
-  const [batchNo, setBatchNo] = useState("");
+  const [inspectionId, setInspectionId] = useState("");
+  const [tester, setTester] = useState("");
   const [hardness, setHardness] = useState("");
   const [hardnessTarget, setHardnessTarget] = useState("70");
   const [tensile, setTensile] = useState("");
@@ -67,48 +75,97 @@ export default function PhysicalTesting() {
   const [elongationTarget, setElongationTarget] = useState("400");
   const [compression, setCompression] = useState("");
   const [compressionTarget, setCompressionTarget] = useState("25");
+  const { showToast } = useToast();
 
   useEffect(() => {
     apiFetch<TestRecord[]>("/api/testing").then((d) => d && setRecords(d));
+    apiFetch<InspectionBatchOption[]>("/api/inspection").then((d) => d && setInspectionBatches(d));
   }, []);
 
   const filtered = records.filter((r) => getTestType(r) === activeTab);
 
   const handleSubmit = () => {
+    if (!inspectionId || !tester) {
+      showToast("请填写所有必填项", "error");
+      return;
+    }
     let overallResult = "fail";
-    let body: Record<string, unknown> = { batchNo };
+    let body: Record<string, unknown> = {
+      inspection_id: inspectionId,
+      tester,
+    };
 
     if (activeTab === "hardness") {
       const h = Number(hardness);
       const t = Number(hardnessTarget);
+      if (!hardness) {
+        showToast("请填写硬度值", "error");
+        return;
+      }
       overallResult = Math.abs(h - t) <= 5 ? "pass" : "fail";
-      body = { ...body, hardnessShoreA: h, hardnessTarget: t, overallResult };
+      body = {
+        ...body,
+        hardness_shore_a: h,
+        hardness_target: t,
+        hardness_result: overallResult,
+        overall_result: overallResult,
+      };
     } else if (activeTab === "tensile") {
       const ts = Number(tensile);
       const el = Number(elongation);
+      if (!tensile || !elongation) {
+        showToast("请填写拉伸强度和延伸率", "error");
+        return;
+      }
       overallResult = ts >= Number(tensileTarget) && el >= Number(elongationTarget) ? "pass" : "fail";
-      body = { ...body, tensileStrength: ts, tensileStrengthTarget: Number(tensileTarget), elongationAtBreak: el, elongationTarget: Number(elongationTarget), overallResult };
+      body = {
+        ...body,
+        tensile_strength: ts,
+        tensile_strength_target: Number(tensileTarget),
+        elongation_at_break: el,
+        elongation_target: Number(elongationTarget),
+        tensile_strength_result: ts >= Number(tensileTarget) ? "pass" : "fail",
+        overall_result: overallResult,
+      };
     } else {
       const cs = Number(compression);
+      if (!compression) {
+        showToast("请填写压缩变形率", "error");
+        return;
+      }
       overallResult = cs <= Number(compressionTarget) ? "pass" : "fail";
-      body = { ...body, compressionSet: cs, compressionSetTarget: Number(compressionTarget), overallResult };
+      body = {
+        ...body,
+        compression_set: cs,
+        compression_set_target: Number(compressionTarget),
+        compression_set_result: overallResult,
+        overall_result: overallResult,
+      };
     }
 
     apiFetch("/api/testing", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    }).then((ok) => ok !== null && apiFetch<TestRecord[]>("/api/testing").then((d) => {
-      if (d) {
-        setRecords(d);
-        setShowForm(false);
-        setBatchNo("");
-        setHardness("");
-        setTensile("");
-        setElongation("");
-        setCompression("");
+    }).then((ok) => {
+      if (ok !== null) {
+        showToast("试验记录提交成功", "success");
+        apiFetch<TestRecord[]>("/api/testing").then((d) => {
+          if (d) {
+            setRecords(d);
+            setShowForm(false);
+            setInspectionId("");
+            setTester("");
+            setHardness("");
+            setTensile("");
+            setElongation("");
+            setCompression("");
+          }
+        });
+      } else {
+        showToast("试验记录提交失败", "error");
       }
-    }));
+    });
   };
 
   const chartData = filtered.map((r) => {
@@ -156,8 +213,19 @@ export default function PhysicalTesting() {
           <div className="card-body">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
-                <label className="block text-xs text-gray-500 mb-1.5">批次号</label>
-                <input type="text" className="input-field w-full" value={batchNo} onChange={(e) => setBatchNo(e.target.value)} placeholder="批次号" />
+                <label className="block text-xs text-gray-500 mb-1.5">关联检测批次</label>
+                <select className="input-field w-full" value={inspectionId} onChange={(e) => setInspectionId(e.target.value)}>
+                  <option value="">选择检测批次</option>
+                  {inspectionBatches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.batchNo}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1.5">试验员</label>
+                <input type="text" className="input-field w-full" value={tester} onChange={(e) => setTester(e.target.value)} placeholder="试验员姓名" />
               </div>
               {activeTab === "hardness" && (
                 <>
