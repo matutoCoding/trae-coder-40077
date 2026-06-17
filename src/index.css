@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    font-family: "Noto Sans SC", "DM Sans", sans-serif;
+    line-height: 1.5;
+    font-weight: 400;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .dark body,
+  .dark {
+    background-color: #1A1D23;
+    color: #E8E6E1;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #1A1D23;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #333842;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #444C58;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-surface-light border border-surface-border rounded-lg;
+  }
+
+  .card-header {
+    @apply px-5 py-4 border-b border-surface-border;
+  }
+
+  .card-body {
+    @apply px-5 py-4;
+  }
+
+  .btn-primary {
+    @apply bg-amber hover:bg-amber-light text-surface font-medium px-4 py-2 rounded-md transition-colors duration-200 text-sm;
+  }
+
+  .btn-secondary {
+    @apply bg-surface-lighter hover:bg-surface-border text-base font-medium px-4 py-2 rounded-md transition-colors duration-200 text-sm border border-surface-border;
+  }
+
+  .btn-danger {
+    @apply bg-fail/20 hover:bg-fail/30 text-fail font-medium px-4 py-2 rounded-md transition-colors duration-200 text-sm;
+  }
+
+  .input-field {
+    @apply bg-surface-lighter border border-surface-border rounded-md px-3 py-2 text-sm text-base placeholder-gray-500 focus:outline-none focus:border-amber focus:ring-1 focus:ring-amber/50 transition-colors;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-2xs font-medium;
+  }
+
+  .badge-pass {
+    @apply badge bg-pass-muted text-pass;
+  }
+
+  .badge-fail {
+    @apply badge bg-fail-muted text-fail;
+  }
+
+  .badge-warn {
+    @apply badge bg-warn-muted text-warn;
+  }
+
+  .badge-info {
+    @apply badge bg-steel-muted text-steel;
+  }
+
+  .badge-amber {
+    @apply badge bg-amber-muted text-amber;
+  }
+
+  .table-header {
+    @apply px-4 py-3 text-left text-2xs font-medium text-gray-400 uppercase tracking-wider;
+  }
+
+  .table-cell {
+    @apply px-4 py-3 text-sm;
+  }
+}
