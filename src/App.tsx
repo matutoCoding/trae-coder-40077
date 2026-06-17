@@ -14,6 +14,7 @@ import DeburringBatch from "@/pages/DeburringBatch";
 import InspectionPage from "@/pages/InspectionPage";
 import PhysicalTesting from "@/pages/PhysicalTesting";
 import QualityReport from "@/pages/QualityReport";
+import BatchTraceability from "@/pages/BatchTraceability";
 
 export default function App() {
   return (
@@ -35,6 +36,7 @@ export default function App() {
             <Route path="/inspection" element={<InspectionPage />} />
             <Route path="/testing" element={<PhysicalTesting />} />
             <Route path="/reports" element={<QualityReport />} />
+            <Route path="/traceability" element={<BatchTraceability />} />
           </Route>
         </Routes>
       </Router>

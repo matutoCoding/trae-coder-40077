@@ -7,7 +7,7 @@ const router = Router()
 
 router.get('/', (req: Request, res: Response): void => {
   const db = getDb()
-  const { status, keyword } = req.query
+  const { status, keyword, operator, date_from, date_to } = req.query
   let sql = 'SELECT * FROM deburring_batches WHERE 1=1'
   const params: unknown[] = []
   if (status) {
@@ -17,6 +17,18 @@ router.get('/', (req: Request, res: Response): void => {
   if (keyword) {
     sql += ' AND (batch_no LIKE ? OR operator LIKE ?)'
     params.push(`%${keyword}%`, `%${keyword}%`)
+  }
+  if (operator) {
+    sql += ' AND operator LIKE ?'
+    params.push(`%${operator}%`)
+  }
+  if (date_from) {
+    sql += ' AND created_at >= ?'
+    params.push(date_from)
+  }
+  if (date_to) {
+    sql += ' AND created_at <= ?'
+    params.push(date_to)
   }
   sql += ' ORDER BY created_at DESC'
   const batches = db.prepare(sql).all(...params)
@@ -29,9 +41,13 @@ router.get('/', (req: Request, res: Response): void => {
 
 router.post('/', (req: Request, res: Response): void => {
   const db = getDb()
-  const { batch_no, vulcanization_batch_id, method, operator } = req.body
+  const { batch_no, vulcanization_batch_id, method, operator, total_count } = req.body
   if (!vulcanization_batch_id || !method || !operator) {
     res.status(400).json({ success: false, error: '硫化批次、修边方式和操作员为必填项' })
+    return
+  }
+  if (total_count === undefined || total_count === null || typeof total_count !== 'number' || total_count <= 0 || !Number.isInteger(total_count)) {
+    res.status(400).json({ success: false, error: '总数必须为大于0的正整数' })
     return
   }
   const vulc = db.prepare('SELECT id FROM vulcanization_batches WHERE id = ?').get(vulcanization_batch_id)
@@ -42,7 +58,7 @@ router.post('/', (req: Request, res: Response): void => {
   const finalBatchNo = batch_no || generateBatchNo('DB-', 'deburring_batches')
   const id = uuidv4()
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19)
-  db.prepare('INSERT INTO deburring_batches (id, batch_no, vulcanization_batch_id, method, operator, start_time, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(id, finalBatchNo, vulcanization_batch_id, method, operator, now, 'in_progress', now)
+  db.prepare('INSERT INTO deburring_batches (id, batch_no, vulcanization_batch_id, method, operator, total_count, start_time, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, finalBatchNo, vulcanization_batch_id, method, operator, total_count, now, 'in_progress', now)
   const batch = db.prepare('SELECT * FROM deburring_batches WHERE id = ?').get(id)
   res.status(201).json({ success: true, data: batch })
 })

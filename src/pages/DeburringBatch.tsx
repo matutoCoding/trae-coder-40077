@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Eye, X } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
 import {
@@ -24,12 +24,14 @@ interface DeburrBatch {
 const statusBadgeMap: Record<string, string> = {
   pending: "badge-warn",
   processing: "badge-info",
+  in_progress: "badge-info",
   completed: "badge-pass",
 };
 
 const statusLabelMap: Record<string, string> = {
   pending: "待处理",
   processing: "处理中",
+  in_progress: "处理中",
   completed: "已完成",
 };
 
@@ -61,14 +63,73 @@ export default function DeburringBatch() {
   const [totalCount, setTotalCount] = useState("");
   const { showToast } = useToast();
 
+  const [keyword, setKeyword] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [operatorSearch, setOperatorSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [appliedFilters, setAppliedFilters] = useState<{ keyword: string; status: string; operator: string; dateFrom: string; dateTo: string }>({
+    keyword: "",
+    status: "",
+    operator: "",
+    dateFrom: "",
+    dateTo: "",
+  });
+
+  const [selectedBatch, setSelectedBatch] = useState<DeburrBatch | null>(null);
+
   useEffect(() => {
-    apiFetch<DeburrBatch[]>("/api/deburring").then((d) => d && setBatches(d));
+    fetchBatches();
     apiFetch<VulcanizationBatchOption[]>("/api/vulcanization").then((d) => d && setVulcanizationBatches(d));
   }, []);
+
+  const fetchBatches = () => {
+    const params = new URLSearchParams();
+    if (appliedFilters.keyword) params.append("keyword", appliedFilters.keyword);
+    if (appliedFilters.status) params.append("status", appliedFilters.status);
+    if (appliedFilters.operator) params.append("operator", appliedFilters.operator);
+    if (appliedFilters.dateFrom) params.append("date_from", appliedFilters.dateFrom);
+    if (appliedFilters.dateTo) params.append("date_to", appliedFilters.dateTo);
+    const url = params.toString() ? `/api/deburring?${params.toString()}` : "/api/deburring";
+    apiFetch<DeburrBatch[]>(url).then((d) => d && setBatches(d));
+  };
+
+  const handleFilter = () => {
+    setAppliedFilters({
+      keyword,
+      status: statusFilter,
+      operator: operatorSearch,
+      dateFrom,
+      dateTo,
+    });
+  };
+
+  useEffect(() => {
+    fetchBatches();
+  }, [appliedFilters]);
+
+  const handleReset = () => {
+    setKeyword("");
+    setStatusFilter("");
+    setOperatorSearch("");
+    setDateFrom("");
+    setDateTo("");
+    setAppliedFilters({
+      keyword: "",
+      status: "",
+      operator: "",
+      dateFrom: "",
+      dateTo: "",
+    });
+  };
 
   const handleCreate = () => {
     if (!vulcanizationBatchId || !operator || !totalCount) {
       showToast("请填写所有必填项", "error");
+      return;
+    }
+    if (Number(totalCount) <= 0) {
+      showToast("总数必须为大于0的正整数", "error");
       return;
     }
     apiFetch("/api/deburring", {
@@ -83,16 +144,12 @@ export default function DeburringBatch() {
     }).then((ok) => {
       if (ok !== null) {
         showToast("去毛边批次创建成功", "success");
-        apiFetch<DeburrBatch[]>("/api/deburring").then((d) => {
-          if (d) {
-            setBatches(d);
-            setShowForm(false);
-            setVulcanizationBatchId("");
-            setMethod("freezing");
-            setOperator("");
-            setTotalCount("");
-          }
-        });
+        fetchBatches();
+        setShowForm(false);
+        setVulcanizationBatchId("");
+        setMethod("freezing");
+        setOperator("");
+        setTotalCount("");
       } else {
         showToast("去毛边批次创建失败", "error");
       }
@@ -117,6 +174,64 @@ export default function DeburringBatch() {
           <Plus size={16} />
           新建批次
         </button>
+      </div>
+
+      <div className="card">
+        <div className="card-body">
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="flex-1 min-w-[160px]">
+              <label className="block text-xs text-gray-500 mb-1.5">批次号关键字</label>
+              <input
+                type="text"
+                className="input-field w-full"
+                placeholder="搜索批次号..."
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+              />
+            </div>
+            <div className="min-w-[140px]">
+              <label className="block text-xs text-gray-500 mb-1.5">状态</label>
+              <select className="input-field w-full" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="">全部状态</option>
+                <option value="pending">待处理</option>
+                <option value="processing">处理中</option>
+                <option value="completed">已完成</option>
+              </select>
+            </div>
+            <div className="min-w-[140px]">
+              <label className="block text-xs text-gray-500 mb-1.5">操作员</label>
+              <input
+                type="text"
+                className="input-field w-full"
+                placeholder="操作员姓名"
+                value={operatorSearch}
+                onChange={(e) => setOperatorSearch(e.target.value)}
+              />
+            </div>
+            <div className="min-w-[150px]">
+              <label className="block text-xs text-gray-500 mb-1.5">开始日期</label>
+              <input
+                type="date"
+                className="input-field w-full"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+              />
+            </div>
+            <div className="min-w-[150px]">
+              <label className="block text-xs text-gray-500 mb-1.5">结束日期</label>
+              <input
+                type="date"
+                className="input-field w-full"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={handleFilter} className="btn-primary">筛选</button>
+              <button onClick={handleReset} className="btn-secondary">重置</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {showForm && (
@@ -214,7 +329,7 @@ export default function DeburringBatch() {
           </div>
           <div className="card-body">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[600px]">
+              <table className="w-full min-w-[700px]">
                 <thead>
                   <tr className="border-b border-surface-border">
                     <th className="table-header">批次号</th>
@@ -224,11 +339,16 @@ export default function DeburringBatch() {
                     <th className="table-header">合格数</th>
                     <th className="table-header">合格率</th>
                     <th className="table-header">状态</th>
+                    <th className="table-header">操作</th>
                   </tr>
                 </thead>
                 <tbody>
                   {batches.map((b) => (
-                    <tr key={b.id} className="border-b border-surface-border last:border-0 hover:bg-surface-lighter/50">
+                    <tr
+                      key={b.id}
+                      className="border-b border-surface-border last:border-0 hover:bg-surface-lighter/50 cursor-pointer"
+                      onClick={() => setSelectedBatch(b)}
+                    >
                       <td className="table-cell font-mono text-amber">{b.batchNo}</td>
                       <td className="table-cell text-steel">{b.vulcanizationBatchId}</td>
                       <td className="table-cell">{methodLabelMap[b.method] || b.method}</td>
@@ -248,6 +368,17 @@ export default function DeburringBatch() {
                           {statusLabelMap[b.status] || b.status}
                         </span>
                       </td>
+                      <td className="table-cell">
+                        <button
+                          className="p-1.5 rounded-md hover:bg-surface-lighter text-gray-400 hover:text-steel transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedBatch(b);
+                          }}
+                        >
+                          <Eye size={16} />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -256,6 +387,62 @@ export default function DeburringBatch() {
           </div>
         </div>
       </div>
+
+      {selectedBatch && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="card w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="card-header flex items-center justify-between">
+              <h3 className="font-display font-semibold text-sm">去毛边批次详情</h3>
+              <button
+                onClick={() => setSelectedBatch(null)}
+                className="p-1 rounded hover:bg-surface-lighter text-gray-400 hover:text-base transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="card-body space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-gray-500">批次号</p>
+                  <p className="text-sm font-mono text-amber">{selectedBatch.batchNo}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">状态</p>
+                  <span className={statusBadgeMap[selectedBatch.status] || "badge-info"}>
+                    {statusLabelMap[selectedBatch.status] || selectedBatch.status}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">关联硫化批次</p>
+                  <p className="text-sm">{selectedBatch.vulcanizationBatchId}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">去边方式</p>
+                  <p className="text-sm">{methodLabelMap[selectedBatch.method] || selectedBatch.method}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">操作员</p>
+                  <p className="text-sm">{selectedBatch.operator}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">总数</p>
+                  <p className="text-sm">{selectedBatch.totalCount}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">合格数</p>
+                  <p className="text-sm">{selectedBatch.qualifiedCount > 0 ? selectedBatch.qualifiedCount : "--"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">合格率</p>
+                  <p className={`text-sm ${selectedBatch.qualifiedRate >= 95 ? "text-pass" : selectedBatch.qualifiedRate > 0 ? "text-fail" : "text-gray-600"}`}>
+                    {selectedBatch.qualifiedRate > 0 ? `${selectedBatch.qualifiedRate.toFixed(1)}%` : "--"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -7,7 +7,7 @@ const router = Router()
 
 router.get('/', (req: Request, res: Response): void => {
   const db = getDb()
-  const { overall_result, keyword } = req.query
+  const { overall_result, keyword, operator, date_from, date_to } = req.query
   let sql = 'SELECT * FROM physical_tests WHERE 1=1'
   const params: unknown[] = []
   if (overall_result) {
@@ -17,6 +17,18 @@ router.get('/', (req: Request, res: Response): void => {
   if (keyword) {
     sql += ' AND (batch_no LIKE ? OR tester LIKE ?)'
     params.push(`%${keyword}%`, `%${keyword}%`)
+  }
+  if (operator) {
+    sql += ' AND tester LIKE ?'
+    params.push(`%${operator}%`)
+  }
+  if (date_from) {
+    sql += ' AND tested_at >= ?'
+    params.push(date_from)
+  }
+  if (date_to) {
+    sql += ' AND tested_at <= ?'
+    params.push(date_to)
   }
   sql += ' ORDER BY tested_at DESC'
   const tests = db.prepare(sql).all(...params)
@@ -42,15 +54,15 @@ router.post('/', (req: Request, res: Response): void => {
   const finalBatchNo = batch_no || generateBatchNo('PT-', 'physical_tests')
   const hardnessResult = hardness_shore_a !== undefined && hardness_target !== undefined
     ? (Math.abs(hardness_shore_a - hardness_target) <= 3 ? 'pass' : 'fail') : null
-  const tensileResult = tensile_strength !== undefined && tensile_strength_target !== undefined
-    ? (tensile_strength >= tensile_strength_target * 0.85 ? 'pass' : 'fail') : null
+  const tensileResult = tensile_strength !== undefined && tensile_strength_target !== undefined && elongation_at_break !== undefined && elongation_target !== undefined
+    ? (tensile_strength >= tensile_strength_target * 0.85 && elongation_at_break >= elongation_target * 0.85 ? 'pass' : 'fail') : null
   const compressionResult = compression_set !== undefined && compression_set_target !== undefined
     ? (compression_set <= compression_set_target * 1.15 ? 'pass' : 'fail') : null
 
   const results = [hardnessResult, tensileResult, compressionResult].filter(r => r !== null)
   let overallResult: string | null = null
   if (results.length > 0) {
-    overallResult = results.some(r => r === 'fail') ? 'fail' : 'pass'
+    overallResult = results.every(r => r === 'pass') ? 'pass' : 'fail'
   }
 
   const id = uuidv4()
@@ -86,9 +98,18 @@ router.put('/:id', (req: Request, res: Response): void => {
   const cTarget = compression_set_target !== undefined ? compression_set_target : current.compression_set_target
 
   const hardnessResult = hVal != null && hTarget != null ? (Math.abs(hVal as number - hTarget as number) <= 3 ? 'pass' : 'fail') : current.hardness_result
-  const tensileResult = tVal != null && tTarget != null ? ((tVal as number) >= (tTarget as number) * 0.85 ? 'pass' : 'fail') : current.tensile_strength_result
+  const tensileResult = tVal != null && tTarget != null && eVal != null && eTarget != null
+    ? ((tVal as number) >= (tTarget as number) * 0.85 && (eVal as number) >= (eTarget as number) * 0.85 ? 'pass' : 'fail')
+    : current.tensile_strength_result
   const compressionResult = cVal != null && cTarget != null ? ((cVal as number) <= (cTarget as number) * 1.15 ? 'pass' : 'fail') : current.compression_set_result
-  const overallResult = hardnessResult === 'pass' && tensileResult === 'pass' && compressionResult === 'pass' ? 'pass' : 'fail'
+
+  const results = [hardnessResult, tensileResult, compressionResult].filter(r => r !== null && r !== undefined) as string[]
+  let overallResult: string
+  if (results.length > 0) {
+    overallResult = results.every(r => r === 'pass') ? 'pass' : 'fail'
+  } else {
+    overallResult = (current.overall_result as string) || 'fail'
+  }
 
   db.prepare(`UPDATE physical_tests SET hardness_shore_a = ?, hardness_target = ?, hardness_result = ?, tensile_strength = ?, tensile_strength_target = ?, tensile_strength_result = ?, elongation_at_break = ?, elongation_target = ?, compression_set = ?, compression_set_target = ?, compression_set_result = ?, overall_result = ?, tester = ? WHERE id = ?`).run(
     hVal, hTarget, hardnessResult, tVal, tTarget, tensileResult,

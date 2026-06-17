@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, CheckCircle2, XCircle } from "lucide-react";
+import { Plus, CheckCircle2, XCircle, Eye, X } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
 
@@ -111,10 +111,65 @@ export default function InspectionPage() {
   const [form, setForm] = useState<NewInspection>(emptyInspection);
   const { showToast } = useToast();
 
+  const [keyword, setKeyword] = useState("");
+  const [inspectorSearch, setInspectorSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [overallResultFilter, setOverallResultFilter] = useState("");
+  const [appliedFilters, setAppliedFilters] = useState<{ keyword: string; inspector: string; dateFrom: string; dateTo: string; overallResult: string }>({
+    keyword: "",
+    inspector: "",
+    dateFrom: "",
+    dateTo: "",
+    overallResult: "",
+  });
+
+  const [selectedRecord, setSelectedRecord] = useState<InspectionRecord | null>(null);
+
   useEffect(() => {
-    apiFetch<InspectionRecord[]>("/api/inspection").then((d) => d && setRecords(d));
+    fetchRecords();
     apiFetch<DeburringBatchOption[]>("/api/deburring").then((d) => d && setDeburringBatches(d));
   }, []);
+
+  const fetchRecords = () => {
+    const params = new URLSearchParams();
+    if (appliedFilters.keyword) params.append("keyword", appliedFilters.keyword);
+    if (appliedFilters.inspector) params.append("inspector", appliedFilters.inspector);
+    if (appliedFilters.dateFrom) params.append("date_from", appliedFilters.dateFrom);
+    if (appliedFilters.dateTo) params.append("date_to", appliedFilters.dateTo);
+    if (appliedFilters.overallResult) params.append("overall_result", appliedFilters.overallResult);
+    const url = params.toString() ? `/api/inspection?${params.toString()}` : "/api/inspection";
+    apiFetch<InspectionRecord[]>(url).then((d) => d && setRecords(d));
+  };
+
+  const handleFilter = () => {
+    setAppliedFilters({
+      keyword,
+      inspector: inspectorSearch,
+      dateFrom,
+      dateTo,
+      overallResult: overallResultFilter,
+    });
+  };
+
+  useEffect(() => {
+    fetchRecords();
+  }, [appliedFilters]);
+
+  const handleReset = () => {
+    setKeyword("");
+    setInspectorSearch("");
+    setDateFrom("");
+    setDateTo("");
+    setOverallResultFilter("");
+    setAppliedFilters({
+      keyword: "",
+      inspector: "",
+      dateFrom: "",
+      dateTo: "",
+      overallResult: "",
+    });
+  };
 
   const updateField = (field: keyof NewInspection, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -162,13 +217,9 @@ export default function InspectionPage() {
     }).then((ok) => {
       if (ok !== null) {
         showToast("检测记录提交成功", "success");
-        apiFetch<InspectionRecord[]>("/api/inspection").then((d) => {
-          if (d) {
-            setRecords(d);
-            setShowForm(false);
-            setForm(emptyInspection);
-          }
-        });
+        fetchRecords();
+        setShowForm(false);
+        setForm(emptyInspection);
       } else {
         showToast("检测记录提交失败", "error");
       }
@@ -189,6 +240,63 @@ export default function InspectionPage() {
           <Plus size={16} />
           新增检测
         </button>
+      </div>
+
+      <div className="card">
+        <div className="card-body">
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="flex-1 min-w-[160px]">
+              <label className="block text-xs text-gray-500 mb-1.5">批次号</label>
+              <input
+                type="text"
+                className="input-field w-full"
+                placeholder="搜索批次号..."
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+              />
+            </div>
+            <div className="min-w-[140px]">
+              <label className="block text-xs text-gray-500 mb-1.5">检测员</label>
+              <input
+                type="text"
+                className="input-field w-full"
+                placeholder="检测员姓名"
+                value={inspectorSearch}
+                onChange={(e) => setInspectorSearch(e.target.value)}
+              />
+            </div>
+            <div className="min-w-[140px]">
+              <label className="block text-xs text-gray-500 mb-1.5">检测结果</label>
+              <select className="input-field w-full" value={overallResultFilter} onChange={(e) => setOverallResultFilter(e.target.value)}>
+                <option value="">全部结果</option>
+                <option value="pass">合格</option>
+                <option value="fail">不合格</option>
+              </select>
+            </div>
+            <div className="min-w-[150px]">
+              <label className="block text-xs text-gray-500 mb-1.5">开始日期</label>
+              <input
+                type="date"
+                className="input-field w-full"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+              />
+            </div>
+            <div className="min-w-[150px]">
+              <label className="block text-xs text-gray-500 mb-1.5">结束日期</label>
+              <input
+                type="date"
+                className="input-field w-full"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={handleFilter} className="btn-primary">筛选</button>
+              <button onClick={handleReset} className="btn-secondary">重置</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {showForm && (
@@ -313,7 +421,7 @@ export default function InspectionPage() {
         </div>
         <div className="card-body">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[700px]">
+            <table className="w-full min-w-[800px]">
               <thead>
                 <tr className="border-b border-surface-border">
                   <th className="table-header">批次号</th>
@@ -322,11 +430,16 @@ export default function InspectionPage() {
                   <th className="table-header">截面</th>
                   <th className="table-header">结果</th>
                   <th className="table-header">检测时间</th>
+                  <th className="table-header">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {records.map((r) => (
-                  <tr key={r.id} className="border-b border-surface-border last:border-0 hover:bg-surface-lighter/50">
+                  <tr
+                    key={r.id}
+                    className="border-b border-surface-border last:border-0 hover:bg-surface-lighter/50 cursor-pointer"
+                    onClick={() => setSelectedRecord(r)}
+                  >
                     <td className="table-cell font-mono text-amber">{r.batchNo}</td>
                     <td className="table-cell">
                       <span className={inTolerance(r.innerDiameter, r.innerDiameterTarget, r.innerDiameterTolerance) ? "text-pass" : "text-fail"}>
@@ -352,6 +465,17 @@ export default function InspectionPage() {
                       </span>
                     </td>
                     <td className="table-cell text-gray-400">{r.inspectedAt}</td>
+                    <td className="table-cell">
+                      <button
+                        className="p-1.5 rounded-md hover:bg-surface-lighter text-gray-400 hover:text-steel transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedRecord(r);
+                        }}
+                      >
+                        <Eye size={16} />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -359,6 +483,54 @@ export default function InspectionPage() {
           </div>
         </div>
       </div>
+
+      {selectedRecord && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="card w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="card-header flex items-center justify-between">
+              <h3 className="font-display font-semibold text-sm">检测记录详情</h3>
+              <button
+                onClick={() => setSelectedRecord(null)}
+                className="p-1 rounded hover:bg-surface-lighter text-gray-400 hover:text-base transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="card-body space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-gray-500">批次号</p>
+                  <p className="text-sm font-mono text-amber">{selectedRecord.batchNo}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">检测结果</p>
+                  <span className={selectedRecord.overallResult === "pass" ? "badge-pass" : "badge-fail"}>
+                    {selectedRecord.overallResult === "pass" ? "合格" : "不合格"}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">关联去毛边批次</p>
+                  <p className="text-sm">{selectedRecord.deburringBatchId}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">检测员</p>
+                  <p className="text-sm">{selectedRecord.inspector}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">检测时间</p>
+                  <p className="text-sm">{selectedRecord.inspectedAt}</p>
+                </div>
+              </div>
+              <div className="space-y-3 pt-2 border-t border-surface-border">
+                <h4 className="text-sm font-medium text-gray-300">尺寸参数</h4>
+                <ToleranceBar value={selectedRecord.innerDiameter} target={selectedRecord.innerDiameterTarget} tolerance={selectedRecord.innerDiameterTolerance} label="内径" />
+                <ToleranceBar value={selectedRecord.outerDiameter} target={selectedRecord.outerDiameterTarget} tolerance={selectedRecord.outerDiameterTolerance} label="外径" />
+                <ToleranceBar value={selectedRecord.crossSection} target={selectedRecord.crossSectionTarget} tolerance={selectedRecord.crossSectionTolerance} label="截面" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

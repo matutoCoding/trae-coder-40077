@@ -7,7 +7,7 @@ const router = Router()
 
 router.get('/', (req: Request, res: Response): void => {
   const db = getDb()
-  const { overall_result, keyword } = req.query
+  const { overall_result, keyword, operator, date_from, date_to } = req.query
   let sql = 'SELECT * FROM inspection_records WHERE 1=1'
   const params: unknown[] = []
   if (overall_result) {
@@ -17,6 +17,18 @@ router.get('/', (req: Request, res: Response): void => {
   if (keyword) {
     sql += ' AND (batch_no LIKE ? OR inspector LIKE ?)'
     params.push(`%${keyword}%`, `%${keyword}%`)
+  }
+  if (operator) {
+    sql += ' AND inspector LIKE ?'
+    params.push(`%${operator}%`)
+  }
+  if (date_from) {
+    sql += ' AND inspected_at >= ?'
+    params.push(date_from)
+  }
+  if (date_to) {
+    sql += ' AND inspected_at <= ?'
+    params.push(date_to)
   }
   sql += ' ORDER BY inspected_at DESC'
   const records = db.prepare(sql).all(...params)

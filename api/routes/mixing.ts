@@ -7,7 +7,7 @@ const router = Router()
 
 router.get('/', (req: Request, res: Response): void => {
   const db = getDb()
-  const { status, keyword } = req.query
+  const { status, keyword, operator, date_from, date_to } = req.query
   let sql = 'SELECT * FROM mixing_batches WHERE 1=1'
   const params: unknown[] = []
   if (status) {
@@ -17,6 +17,18 @@ router.get('/', (req: Request, res: Response): void => {
   if (keyword) {
     sql += ' AND (batch_no LIKE ? OR operator LIKE ?)'
     params.push(`%${keyword}%`, `%${keyword}%`)
+  }
+  if (operator) {
+    sql += ' AND operator LIKE ?'
+    params.push(`%${operator}%`)
+  }
+  if (date_from) {
+    sql += ' AND created_at >= ?'
+    params.push(date_from)
+  }
+  if (date_to) {
+    sql += ' AND created_at <= ?'
+    params.push(date_to)
   }
   sql += ' ORDER BY created_at DESC'
   const batches = db.prepare(sql).all(...params)

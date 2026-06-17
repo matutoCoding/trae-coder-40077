@@ -20,6 +20,7 @@ import deburringRoutes from './routes/deburring.js'
 import inspectionRoutes from './routes/inspection.js'
 import testingRoutes from './routes/testing.js'
 import reportRoutes from './routes/reports.js'
+import traceabilityRoutes from './routes/traceability.js'
 import { getDb } from './database.js'
 
 // for esm mode
@@ -49,6 +50,7 @@ app.use('/api/deburring', deburringRoutes)
 app.use('/api/inspection', inspectionRoutes)
 app.use('/api/testing', testingRoutes)
 app.use('/api/reports', reportRoutes)
+app.use('/api/traceability', traceabilityRoutes)
 
 /**
  * health

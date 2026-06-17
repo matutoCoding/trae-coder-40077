@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Thermometer, Eye } from "lucide-react";
+import { Plus, Thermometer, Eye, X } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
 
@@ -14,6 +14,7 @@ interface MixBatch {
   dischargeTemp: number;
   maxTemp: number;
   status: string;
+  createdAt?: string;
 }
 
 const statusBadgeMap: Record<string, string> = {
@@ -66,10 +67,65 @@ export default function MixingBatch() {
   const [operator, setOperator] = useState("");
   const { showToast } = useToast();
 
+  const [keyword, setKeyword] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [operatorSearch, setOperatorSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [appliedFilters, setAppliedFilters] = useState<{ keyword: string; status: string; operator: string; dateFrom: string; dateTo: string }>({
+    keyword: "",
+    status: "",
+    operator: "",
+    dateFrom: "",
+    dateTo: "",
+  });
+
+  const [selectedBatch, setSelectedBatch] = useState<MixBatch | null>(null);
+
   useEffect(() => {
-    apiFetch<MixBatch[]>("/api/mixing").then((d) => d && setBatches(d));
+    fetchBatches();
     apiFetch<FormulaOption[]>("/api/formulas").then((d) => d && setFormulas(d));
   }, []);
+
+  const fetchBatches = () => {
+    const params = new URLSearchParams();
+    if (appliedFilters.keyword) params.append("keyword", appliedFilters.keyword);
+    if (appliedFilters.status) params.append("status", appliedFilters.status);
+    if (appliedFilters.operator) params.append("operator", appliedFilters.operator);
+    if (appliedFilters.dateFrom) params.append("date_from", appliedFilters.dateFrom);
+    if (appliedFilters.dateTo) params.append("date_to", appliedFilters.dateTo);
+    const url = params.toString() ? `/api/mixing?${params.toString()}` : "/api/mixing";
+    apiFetch<MixBatch[]>(url).then((d) => d && setBatches(d));
+  };
+
+  const handleFilter = () => {
+    setAppliedFilters({
+      keyword,
+      status: statusFilter,
+      operator: operatorSearch,
+      dateFrom,
+      dateTo,
+    });
+  };
+
+  useEffect(() => {
+    fetchBatches();
+  }, [appliedFilters]);
+
+  const handleReset = () => {
+    setKeyword("");
+    setStatusFilter("");
+    setOperatorSearch("");
+    setDateFrom("");
+    setDateTo("");
+    setAppliedFilters({
+      keyword: "",
+      status: "",
+      operator: "",
+      dateFrom: "",
+      dateTo: "",
+    });
+  };
 
   const handleCreate = () => {
     if (!formulaId || !machineNo || !operator) {
@@ -87,15 +143,11 @@ export default function MixingBatch() {
     }).then((ok) => {
       if (ok !== null) {
         showToast("密炼批次创建成功", "success");
-        apiFetch<MixBatch[]>("/api/mixing").then((d) => {
-          if (d) {
-            setBatches(d);
-            setShowForm(false);
-            setFormulaId("");
-            setMachineNo("");
-            setOperator("");
-          }
-        });
+        fetchBatches();
+        setShowForm(false);
+        setFormulaId("");
+        setMachineNo("");
+        setOperator("");
       } else {
         showToast("密炼批次创建失败", "error");
       }
@@ -115,6 +167,65 @@ export default function MixingBatch() {
             <Plus size={16} />
             新建批次
           </button>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-body">
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="flex-1 min-w-[160px]">
+              <label className="block text-xs text-gray-500 mb-1.5">批次号关键字</label>
+              <input
+                type="text"
+                className="input-field w-full"
+                placeholder="搜索批次号..."
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+              />
+            </div>
+            <div className="min-w-[140px]">
+              <label className="block text-xs text-gray-500 mb-1.5">状态</label>
+              <select className="input-field w-full" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="">全部状态</option>
+                <option value="pending">待混炼</option>
+                <option value="mixing">混炼中</option>
+                <option value="completed">已完成</option>
+                <option value="abnormal">异常</option>
+              </select>
+            </div>
+            <div className="min-w-[140px]">
+              <label className="block text-xs text-gray-500 mb-1.5">操作员</label>
+              <input
+                type="text"
+                className="input-field w-full"
+                placeholder="操作员姓名"
+                value={operatorSearch}
+                onChange={(e) => setOperatorSearch(e.target.value)}
+              />
+            </div>
+            <div className="min-w-[150px]">
+              <label className="block text-xs text-gray-500 mb-1.5">开始日期</label>
+              <input
+                type="date"
+                className="input-field w-full"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+              />
+            </div>
+            <div className="min-w-[150px]">
+              <label className="block text-xs text-gray-500 mb-1.5">结束日期</label>
+              <input
+                type="date"
+                className="input-field w-full"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={handleFilter} className="btn-primary">筛选</button>
+              <button onClick={handleReset} className="btn-secondary">重置</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -185,7 +296,11 @@ export default function MixingBatch() {
               </thead>
               <tbody>
                 {batches.map((b) => (
-                  <tr key={b.id} className="border-b border-surface-border last:border-0 hover:bg-surface-lighter/50">
+                  <tr
+                    key={b.id}
+                    className="border-b border-surface-border last:border-0 hover:bg-surface-lighter/50 cursor-pointer"
+                    onClick={() => setSelectedBatch(b)}
+                  >
                     <td className="table-cell font-mono text-amber">{b.batchNo}</td>
                     <td className="table-cell">{b.formula?.name || b.formulaId}</td>
                     <td className="table-cell text-gray-400">{b.machineNo}</td>
@@ -205,7 +320,13 @@ export default function MixingBatch() {
                       </span>
                     </td>
                     <td className="table-cell">
-                      <button className="p-1.5 rounded-md hover:bg-surface-lighter text-gray-400 hover:text-steel transition-colors">
+                      <button
+                        className="p-1.5 rounded-md hover:bg-surface-lighter text-gray-400 hover:text-steel transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedBatch(b);
+                        }}
+                      >
                         <Eye size={16} />
                       </button>
                     </td>
@@ -246,6 +367,58 @@ export default function MixingBatch() {
           </div>
         </div>
       </div>
+
+      {selectedBatch && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="card w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="card-header flex items-center justify-between">
+              <h3 className="font-display font-semibold text-sm">密炼批次详情</h3>
+              <button
+                onClick={() => setSelectedBatch(null)}
+                className="p-1 rounded hover:bg-surface-lighter text-gray-400 hover:text-base transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="card-body space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-gray-500">批次号</p>
+                  <p className="text-sm font-mono text-amber">{selectedBatch.batchNo}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">状态</p>
+                  <span className={statusBadgeMap[selectedBatch.status] || "badge-info"}>
+                    {statusLabelMap[selectedBatch.status] || selectedBatch.status}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">配方</p>
+                  <p className="text-sm">{selectedBatch.formula?.name || selectedBatch.formulaId}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">机台</p>
+                  <p className="text-sm">{selectedBatch.machineNo}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">操作员</p>
+                  <p className="text-sm">{selectedBatch.operator}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">排胶温度</p>
+                  <p className={`text-sm ${selectedBatch.dischargeTemp > 160 ? "text-fail" : selectedBatch.dischargeTemp > 0 ? "text-pass" : "text-gray-600"}`}>
+                    {selectedBatch.dischargeTemp > 0 ? `${selectedBatch.dischargeTemp}°C` : "--"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">最高温度</p>
+                  <p className="text-sm">{selectedBatch.maxTemp > 0 ? `${selectedBatch.maxTemp}°C` : "--"}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Menu,
+  GitBranch,
 } from "lucide-react";
 
 const navItems = [
@@ -25,6 +26,7 @@ const navItems = [
   { path: "/inspection", label: "尺寸检测", icon: Ruler },
   { path: "/testing", label: "物性试验", icon: TestTubes },
   { path: "/reports", label: "质量报告", icon: BarChart3 },
+  { path: "/traceability", label: "批次追溯", icon: GitBranch },
 ];
 
 const breadcrumbMap: Record<string, string> = {
@@ -40,6 +42,7 @@ const breadcrumbMap: Record<string, string> = {
   "/inspection": "尺寸检测",
   "/testing": "物性试验",
   "/reports": "质量报告",
+  "/traceability": "批次追溯",
 };
 
 function getBreadcrumbs(pathname: string) {
