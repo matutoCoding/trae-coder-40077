@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Plus, Eye, X } from "lucide-react";
-import { apiFetch } from "@/lib/utils";
+import { apiFetch, apiFetchFull } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
 import {
   PieChart,
@@ -132,7 +132,7 @@ export default function DeburringBatch() {
       showToast("总数必须为大于0的正整数", "error");
       return;
     }
-    apiFetch("/api/deburring", {
+    apiFetchFull("/api/deburring", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -141,8 +141,8 @@ export default function DeburringBatch() {
         operator,
         total_count: Number(totalCount),
       }),
-    }).then((ok) => {
-      if (ok !== null) {
+    }).then((r) => {
+      if (r.success) {
         showToast("去毛边批次创建成功", "success");
         fetchBatches();
         setShowForm(false);
@@ -151,7 +151,7 @@ export default function DeburringBatch() {
         setOperator("");
         setTotalCount("");
       } else {
-        showToast("去毛边批次创建失败", "error");
+        showToast(r.error || "去毛边批次创建失败", "error");
       }
     });
   };

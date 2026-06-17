@@ -162,6 +162,7 @@ function initTables(db: Database.Database) {
       tensile_strength_result TEXT,
       elongation_at_break REAL,
       elongation_target REAL,
+      elongation_result TEXT,
       compression_set REAL,
       compression_set_target REAL,
       compression_set_result TEXT,
@@ -169,6 +170,10 @@ function initTables(db: Database.Database) {
       tested_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `)
+
+  try {
+    db.prepare('ALTER TABLE physical_tests ADD COLUMN elongation_result TEXT').run()
+  } catch (_) { }
 }
 
 function isEmpty(db: Database.Database): boolean {

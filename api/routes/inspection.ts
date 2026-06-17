@@ -7,7 +7,7 @@ const router = Router()
 
 router.get('/', (req: Request, res: Response): void => {
   const db = getDb()
-  const { overall_result, keyword, operator, date_from, date_to } = req.query
+  const { overall_result, keyword, operator, inspector, date_from, date_to } = req.query
   let sql = 'SELECT * FROM inspection_records WHERE 1=1'
   const params: unknown[] = []
   if (overall_result) {
@@ -18,9 +18,10 @@ router.get('/', (req: Request, res: Response): void => {
     sql += ' AND (batch_no LIKE ? OR inspector LIKE ?)'
     params.push(`%${keyword}%`, `%${keyword}%`)
   }
-  if (operator) {
+  const operatorOrInspector = (inspector || operator) as string | undefined
+  if (operatorOrInspector) {
     sql += ' AND inspector LIKE ?'
-    params.push(`%${operator}%`)
+    params.push(`%${operatorOrInspector}%`)
   }
   if (date_from) {
     sql += ' AND inspected_at >= ?'
@@ -42,16 +43,37 @@ router.get('/', (req: Request, res: Response): void => {
 router.post('/', (req: Request, res: Response): void => {
   const db = getDb()
   const { batch_no, deburring_batch_id, inspector, inner_diameter, inner_diameter_target, inner_diameter_tolerance, outer_diameter, outer_diameter_target, outer_diameter_tolerance, cross_section, cross_section_target, cross_section_tolerance } = req.body
-  if (!deburring_batch_id || !inspector) {
-    res.status(400).json({ success: false, error: '修边批次和检验员为必填项' })
+  if (!deburring_batch_id || String(deburring_batch_id).trim() === '') {
+    res.status(400).json({ success: false, error: '关联批次未选对,请选择一个有效的去毛边批次' })
     return
+  }
+  if (!inspector || String(inspector).trim() === '') {
+    res.status(400).json({ success: false, error: '请填写检测员姓名' })
+    return
+  }
+  const nums: { name: string; value: number | undefined; min: number; max: number }[] = []
+  if (inner_diameter != null && inner_diameter !== '') nums.push({ name: '内径', value: Number(inner_diameter), min: 0.1, max: 1000 })
+  if (outer_diameter != null && outer_diameter !== '') nums.push({ name: '外径', value: Number(outer_diameter), min: 0.1, max: 2000 })
+  if (cross_section != null && cross_section !== '') nums.push({ name: '截面直径', value: Number(cross_section), min: 0.1, max: 200 })
+  for (const n of nums) {
+    if (Number.isNaN(n.value) || n.value! < n.min || n.value > n.max) {
+      res.status(400).json({ success: false, error: `异常数值: ${n.name}应在${n.min}~${n.max}之间` })
+      return
+    }
   }
   const deburr = db.prepare('SELECT id FROM deburring_batches WHERE id = ?').get(deburring_batch_id)
   if (!deburr) {
-    res.status(400).json({ success: false, error: '修边批次不存在' })
+    res.status(400).json({ success: false, error: '关联批次未选对,该去毛边批次在系统中不存在' })
     return
   }
-  const finalBatchNo = batch_no || generateBatchNo('IC-', 'inspection_records')
+  if (batch_no && batch_no.trim() !== '') {
+    const dup = db.prepare('SELECT id FROM inspection_records WHERE batch_no = ?').get(batch_no.trim())
+    if (dup) {
+      res.status(400).json({ success: false, error: `批次号重复: ${batch_no} 已经存在,请更换或留空自动生成` })
+      return
+    }
+  }
+  const finalBatchNo = batch_no ? batch_no.trim() : generateBatchNo('IC-', 'inspection_records')
   const idResult = inner_diameter !== undefined && inner_diameter_target !== undefined && inner_diameter_tolerance !== undefined
     ? (Math.abs(inner_diameter - inner_diameter_target) <= inner_diameter_tolerance ? 'pass' : 'fail') : null
   const odResult = outer_diameter !== undefined && outer_diameter_target !== undefined && outer_diameter_tolerance !== undefined

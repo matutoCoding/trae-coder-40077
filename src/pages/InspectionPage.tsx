@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Plus, CheckCircle2, XCircle, Eye, X } from "lucide-react";
-import { apiFetch } from "@/lib/utils";
+import { apiFetch, apiFetchFull } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
 
 interface InspectionRecord {
@@ -197,7 +197,7 @@ export default function InspectionPage() {
       inTolerance(vals.crossSection, vals.crossSectionTarget, vals.crossSectionTolerance)
         ? "pass" : "fail";
 
-    apiFetch("/api/inspection", {
+    apiFetchFull("/api/inspection", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -214,14 +214,14 @@ export default function InspectionPage() {
         cross_section_tolerance: vals.crossSectionTolerance,
         overall_result: overallResult,
       }),
-    }).then((ok) => {
-      if (ok !== null) {
+    }).then((r) => {
+      if (r.success) {
         showToast("检测记录提交成功", "success");
         fetchRecords();
         setShowForm(false);
         setForm(emptyInspection);
       } else {
-        showToast("检测记录提交失败", "error");
+        showToast(r.error || "检测记录提交失败", "error");
       }
     });
   };

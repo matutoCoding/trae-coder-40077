@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Search, ChevronRight, GitBranch } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Search, ChevronRight, GitBranch, ExternalLink, AlertCircle, CheckCircle2 } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
 
 interface TraceRecord {
@@ -21,6 +22,10 @@ interface TraceChain {
   chain: TraceStageData[];
   currentStageIndex: number;
   currentStageName: string;
+  lastStageWithData: number;
+  nextStageKey: string | null;
+  nextStageName: string | null;
+  isStuck: boolean;
 }
 
 const stageTabs = [
@@ -42,6 +47,16 @@ const stageLabelMap: Record<string, string> = {
   deburring: "去毛边",
   inspection: "尺寸检测",
   testing: "物性试验",
+};
+
+const stageRouteMap: Record<string, string> = {
+  formula: "/formulas",
+  mixing: "/mixing",
+  milling: "/milling",
+  vulcanization: "/vulcanization/records",
+  deburring: "/deburring",
+  inspection: "/inspection",
+  testing: "/testing",
 };
 
 const statusBadgeMap: Record<string, string> = {
@@ -155,12 +170,12 @@ function renderStageParams(stage: string, data: Record<string, unknown> | null) 
 }
 
 export default function BatchTraceability() {
+  const navigate = useNavigate();
   const [records, setRecords] = useState<TraceRecord[]>([]);
   const [keyword, setKeyword] = useState("");
   const [activeStage, setActiveStage] = useState("all");
   const [selectedRecord, setSelectedRecord] = useState<TraceRecord | null>(null);
   const [traceChain, setTraceChain] = useState<TraceChain | null>(null);
-  const [highlightedStage, setHighlightedStage] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch<TraceRecord[]>("/api/traceability").then((d) => d && setRecords(d));
@@ -174,11 +189,8 @@ export default function BatchTraceability() {
 
   const handleSelectRecord = (record: TraceRecord) => {
     setSelectedRecord(record);
-    setHighlightedStage(record.stage);
     apiFetch<TraceChain>(`/api/traceability/${record.stage}/${record.id}`).then((d) => {
-      if (d) {
-        setTraceChain(d);
-      }
+      if (d) setTraceChain(d);
     });
   };
 
@@ -276,10 +288,22 @@ export default function BatchTraceability() {
 
         <div className="lg:col-span-3">
           <div className="card h-full">
-            <div className="card-header">
+            <div className="card-header flex items-center justify-between gap-2">
               <h3 className="font-display font-semibold text-sm">
                 {selectedRecord ? `${stageLabelMap[selectedRecord.stage]} - ${selectedRecord.batchNo}` : "追溯链条"}
               </h3>
+              {traceChain && traceChain.isStuck && traceChain.nextStageName && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-warn-muted text-warn text-xs">
+                  <AlertCircle size={14} />
+                  <span>当前卡在 {stageLabelMap[traceChain.chain[traceChain.lastStageWithData]?.stage] || '起始阶段'},下一站: {traceChain.nextStageName}</span>
+                </div>
+              )}
+              {traceChain && !traceChain.isStuck && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-pass-muted text-pass text-xs">
+                  <CheckCircle2 size={14} />
+                  <span>全流程已走完</span>
+                </div>
+              )}
             </div>
             <div className="card-body">
               {!traceChain ? (
@@ -288,11 +312,15 @@ export default function BatchTraceability() {
                   <p>请从左侧选择一个批次查看完整追溯链</p>
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {traceChain.chain.map((stageItem, idx) => {
-                    const isHighlighted = highlightedStage === stageItem.stage;
+                    const isSelected = selectedRecord?.stage === stageItem.stage;
                     const stageData = stageItem.data as Record<string, unknown> | null;
                     const batchNo = getBatchNo(stageData, stageItem.stage);
+                    const hasData = !!stageData;
+                    const isBottleneck = !hasData && traceChain.nextStageKey === stageItem.stage;
+                    const isAlreadyDone = hasData;
+                    const isPending = !hasData && !isBottleneck;
                     let status = "";
                     if (stageData) {
                       if (stageItem.stage === "formula") status = (stageData.status as string) || "completed";
@@ -300,36 +328,56 @@ export default function BatchTraceability() {
                       else status = (stageData.status as string) || "";
                     }
 
+                    let borderClass = "border-surface-border bg-surface-lighter/30";
+                    if (isSelected) borderClass = "border-2 border-amber bg-amber-muted/20";
+                    else if (isBottleneck) borderClass = "border-2 border-warn bg-warn-muted/20";
+                    else if (isAlreadyDone) borderClass = "border-pass/40 bg-pass-muted/5";
+                    else if (isPending) borderClass = "border-dashed border-surface-border bg-surface-lighter/10 opacity-60";
+
                     return (
                       <div
                         key={stageItem.stage}
-                        className={`relative p-4 rounded-lg border transition-all ${
-                          isHighlighted
-                            ? "border-2 border-amber bg-amber-muted/20"
-                            : "border-surface-border bg-surface-lighter/30"
-                        }`}
+                        className={`relative p-4 rounded-lg border transition-all ${borderClass}`}
                       >
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-3">
                             <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                              isHighlighted ? "bg-amber text-surface" : "bg-surface-border text-gray-300"
+                              isSelected ? "bg-amber text-surface"
+                                : isBottleneck ? "bg-warn text-surface"
+                                : isAlreadyDone ? "bg-pass/20 text-pass"
+                                : "bg-surface-border text-gray-500"
                             }`}>
-                              {idx + 1}
+                              {isBottleneck ? <AlertCircle size={16} /> : idx + 1}
                             </span>
                             <div>
-                              <h4 className="font-semibold text-sm">{stageLabelMap[stageItem.stage]}</h4>
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-semibold text-sm">{stageLabelMap[stageItem.stage]}</h4>
+                                {isBottleneck && <span className="badge-warn">卡点</span>}
+                                {isPending && <span className="badge-info">待处理</span>}
+                              </div>
                               <p className="font-mono text-xs text-amber">{batchNo}</p>
                             </div>
                           </div>
-                          {status && (
-                            <span className={getBadgeClass(status)}>
-                              {getStatusLabel(status)}
-                            </span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {status && (
+                              <span className={getBadgeClass(status)}>
+                                {getStatusLabel(status)}
+                              </span>
+                            )}
+                            {hasData && stageRouteMap[stageItem.stage] && (
+                              <button
+                                onClick={() => navigate(stageRouteMap[stageItem.stage])}
+                                className="p-1.5 rounded-md hover:bg-surface-lighter text-gray-400 hover:text-amber transition-colors"
+                                title={`跳转到${stageLabelMap[stageItem.stage]}记录`}
+                              >
+                                <ExternalLink size={14} />
+                              </button>
+                            )}
+                          </div>
                         </div>
                         {renderStageParams(stageItem.stage, stageData)}
                         {idx < traceChain.chain.length - 1 && (
-                          <div className="absolute left-7 -bottom-4 w-0.5 h-4 bg-surface-border" />
+                          <div className="absolute left-7 -bottom-3 w-0.5 h-3 bg-surface-border" />
                         )}
                       </div>
                     );

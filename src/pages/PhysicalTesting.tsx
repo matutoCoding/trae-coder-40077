@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { apiFetch } from "@/lib/utils";
+import { apiFetch, apiFetchFull } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
-import { Eye, X } from "lucide-react";
+import { Eye, X, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -18,6 +18,7 @@ type TestTab = "hardness" | "tensile" | "compression";
 interface TestRecord {
   id: string;
   batchNo: string;
+  inspectionId: string;
   tester: string;
   hardnessShoreA?: number;
   hardnessTarget?: number;
@@ -35,6 +36,22 @@ interface TestRecord {
   testedAt: string;
 }
 
+interface InspectionDetail {
+  id: string;
+  innerDiameter: number;
+  innerDiameterTarget: number;
+  outerDiameter: number;
+  outerDiameterTarget: number;
+  crossSection: number;
+  crossSectionTarget: number;
+  innerDiameterResult: string;
+  outerDiameterResult: string;
+  crossSectionResult: string;
+  overallResult: string;
+  inspector: string;
+  deburringBatchId: string;
+}
+
 function getTestType(r: TestRecord): TestTab | null {
   if (r.hardnessShoreA != null) return "hardness";
   if (r.tensileStrength != null) return "tensile";
@@ -47,22 +64,20 @@ interface InspectionBatchOption {
   batchNo: string;
 }
 
-const defaultRecords: TestRecord[] = [
-  { id: "1", batchNo: "PT-20240618-001", tester: "张工", hardnessShoreA: 72, hardnessTarget: 70, hardnessResult: "pass", overallResult: "pass", testedAt: "2024-06-18 14:00" },
-  { id: "2", batchNo: "PT-20240618-002", tester: "李工", hardnessShoreA: 78, hardnessTarget: 70, hardnessResult: "fail", overallResult: "fail", testedAt: "2024-06-18 13:30" },
-  { id: "3", batchNo: "PT-20240618-003", tester: "王工", tensileStrength: 18.5, tensileStrengthTarget: 17, tensileStrengthResult: "pass", elongationAtBreak: 420, elongationTarget: 400, elongationResult: "pass", overallResult: "pass", testedAt: "2024-06-18 12:00" },
-  { id: "4", batchNo: "PT-20240618-004", tester: "赵工", compressionSet: 22, compressionSetTarget: 25, compressionSetResult: "pass", overallResult: "pass", testedAt: "2024-06-18 11:30" },
-  { id: "5", batchNo: "PT-20240618-005", tester: "钱工", tensileStrength: 15.2, tensileStrengthTarget: 17, tensileStrengthResult: "fail", elongationAtBreak: 380, elongationTarget: 400, elongationResult: "fail", overallResult: "fail", testedAt: "2024-06-18 10:00" },
-];
-
 const tabs: { key: TestTab; label: string }[] = [
   { key: "hardness", label: "硬度测试" },
   { key: "tensile", label: "拉伸试验" },
   { key: "compression", label: "压缩变形" },
 ];
 
+function resultClass(r: string | undefined) {
+  if (r === "pass") return "text-pass";
+  if (r === "fail") return "text-fail";
+  return "text-gray-500";
+}
+
 export default function PhysicalTesting() {
-  const [records, setRecords] = useState<TestRecord[]>(defaultRecords);
+  const [records, setRecords] = useState<TestRecord[]>([]);
   const [inspectionBatches, setInspectionBatches] = useState<InspectionBatchOption[]>([]);
   const [activeTab, setActiveTab] = useState<TestTab>("hardness");
   const [showForm, setShowForm] = useState(false);
@@ -84,7 +99,7 @@ export default function PhysicalTesting() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [overallResultFilter, setOverallResultFilter] = useState("");
-  const [appliedFilters, setAppliedFilters] = useState<{ keyword: string; tester: string; dateFrom: string; dateTo: string; overallResult: string }>({
+  const [appliedFilters, setAppliedFilters] = useState({
     keyword: "",
     tester: "",
     dateFrom: "",
@@ -93,6 +108,9 @@ export default function PhysicalTesting() {
   });
 
   const [selectedRecord, setSelectedRecord] = useState<TestRecord | null>(null);
+  const [inspectionDetail, setInspectionDetail] = useState<InspectionDetail | null>(null);
+
+  const [overviewInspectionId, setOverviewInspectionId] = useState("");
 
   useEffect(() => {
     fetchRecords();
@@ -130,23 +148,38 @@ export default function PhysicalTesting() {
     setDateFrom("");
     setDateTo("");
     setOverallResultFilter("");
-    setAppliedFilters({
-      keyword: "",
-      tester: "",
-      dateFrom: "",
-      dateTo: "",
-      overallResult: "",
-    });
+    setAppliedFilters({ keyword: "", tester: "", dateFrom: "", dateTo: "", overallResult: "" });
   };
 
+  const loadInspectionDetail = (id: string) => {
+    if (!id) {
+      setInspectionDetail(null);
+      return;
+    }
+    apiFetch<InspectionDetail>(`/api/inspection/${id}`).then((d) => setInspectionDetail(d || null));
+  };
+
+  useEffect(() => {
+    if (overviewInspectionId) loadInspectionDetail(overviewInspectionId);
+  }, [overviewInspectionId]);
+
   const filtered = records.filter((r) => getTestType(r) === activeTab);
+
+  const testsForOverview = overviewInspectionId
+    ? records.filter((r) => r.inspectionId === overviewInspectionId)
+    : [];
+
+  const hardnessTest = testsForOverview.find((r) => r.hardnessShoreA != null);
+  const tensileTest = testsForOverview.find((r) => r.tensileStrength != null);
+  const compressionTest = testsForOverview.find((r) => r.compressionSet != null);
+
+  const allItems = testsForOverview.length > 0 || inspectionDetail != null;
 
   const handleSubmit = () => {
     if (!inspectionId || !tester) {
       showToast("请填写所有必填项", "error");
       return;
     }
-    let overallResult = "fail";
     let body: Record<string, unknown> = {
       inspection_id: inspectionId,
       tester,
@@ -159,13 +192,14 @@ export default function PhysicalTesting() {
         showToast("请填写硬度值", "error");
         return;
       }
-      overallResult = Math.abs(h - t) <= 5 ? "pass" : "fail";
+      if (h < 0 || h > 120) {
+        showToast("异常数值:硬度应在0~120 Shore A之间", "error");
+        return;
+      }
       body = {
         ...body,
         hardness_shore_a: h,
         hardness_target: t,
-        hardness_result: overallResult,
-        overall_result: overallResult,
       };
     } else if (activeTab === "tensile") {
       const ts = Number(tensile);
@@ -176,18 +210,20 @@ export default function PhysicalTesting() {
         showToast("请填写拉伸强度和延伸率", "error");
         return;
       }
-      const tensilePass = ts >= tsTarget;
-      const elongationPass = el >= elTarget;
-      overallResult = tensilePass && elongationPass ? "pass" : "fail";
+      if (ts < 0 || ts > 200) {
+        showToast("异常数值:拉伸强度应在0~200 MPa之间", "error");
+        return;
+      }
+      if (el < 0 || el > 2000) {
+        showToast("异常数值:延伸率应在0~2000%之间", "error");
+        return;
+      }
       body = {
         ...body,
         tensile_strength: ts,
         tensile_strength_target: tsTarget,
-        tensile_strength_result: tensilePass ? "pass" : "fail",
         elongation_at_break: el,
         elongation_target: elTarget,
-        elongation_result: elongationPass ? "pass" : "fail",
-        overall_result: overallResult,
       };
     } else {
       const cs = Number(compression);
@@ -195,22 +231,23 @@ export default function PhysicalTesting() {
         showToast("请填写压缩变形率", "error");
         return;
       }
-      overallResult = cs <= Number(compressionTarget) ? "pass" : "fail";
+      if (cs < 0 || cs > 100) {
+        showToast("异常数值:压缩变形率应在0~100%之间", "error");
+        return;
+      }
       body = {
         ...body,
         compression_set: cs,
         compression_set_target: Number(compressionTarget),
-        compression_set_result: overallResult,
-        overall_result: overallResult,
       };
     }
 
-    apiFetch("/api/testing", {
+    apiFetchFull("/api/testing", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    }).then((ok) => {
-      if (ok !== null) {
+    }).then((r) => {
+      if (r.success) {
         showToast("试验记录提交成功", "success");
         fetchRecords();
         setShowForm(false);
@@ -220,8 +257,11 @@ export default function PhysicalTesting() {
         setTensile("");
         setElongation("");
         setCompression("");
+        if (overviewInspectionId) {
+          loadInspectionDetail(overviewInspectionId);
+        }
       } else {
-        showToast("试验记录提交失败", "error");
+        showToast(r.error || "试验记录提交失败", "error");
       }
     });
   };
@@ -230,16 +270,30 @@ export default function PhysicalTesting() {
     if (activeTab === "hardness") {
       return { name: r.batchNo.slice(-3), 实测: r.hardnessShoreA, 目标: r.hardnessTarget };
     } else if (activeTab === "tensile") {
-      return { name: r.batchNo.slice(-3), 拉伸强度: r.tensileStrength, 目标: r.tensileStrengthTarget, 延伸率: r.elongationAtBreak, 延伸目标: r.elongationTarget };
+      return { name: r.batchNo.slice(-3), 拉伸强度: r.tensileStrength, 目标强度: r.tensileStrengthTarget, 延伸率: r.elongationAtBreak, 延伸目标: r.elongationTarget };
     } else {
       return { name: r.batchNo.slice(-3), 实测: r.compressionSet, 目标: r.compressionSetTarget };
     }
   });
 
-  const getCombinedTensileResult = (r: TestRecord) => {
-    const tsPass = r.tensileStrengthResult === "pass" || (r.tensileStrength != null && r.tensileStrengthTarget != null && r.tensileStrength >= r.tensileStrengthTarget);
-    const elPass = r.elongationResult === "pass" || (r.elongationAtBreak != null && r.elongationTarget != null && r.elongationAtBreak >= r.elongationTarget);
-    return tsPass && elPass ? "pass" : "fail";
+  const getOverallStatus = () => {
+    if (!inspectionDetail && testsForOverview.length === 0) return "unknown";
+    const results: string[] = [];
+    if (inspectionDetail) {
+      results.push(inspectionDetail.overallResult || "pass");
+    }
+    testsForOverview.forEach((t) => {
+      if (t.overallResult) results.push(t.overallResult);
+    });
+    if (results.length === 0) return "unknown";
+    return results.every((r) => r === "pass") ? "pass" : "fail";
+  };
+
+  const releaseAdvice = () => {
+    const status = getOverallStatus();
+    if (status === "pass") return { label: "建议放行", color: "text-pass", icon: <CheckCircle2 size={20} /> };
+    if (status === "fail") return { label: "建议报废或返工", color: "text-fail", icon: <XCircle size={20} /> };
+    return { label: "待完整检测", color: "text-warn", icon: <AlertTriangle size={20} /> };
   };
 
   return (
@@ -305,6 +359,167 @@ export default function PhysicalTesting() {
               <button onClick={handleReset} className="btn-secondary">重置</button>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-header flex items-center justify-between">
+          <h3 className="font-display font-semibold text-sm">批次质量总览</h3>
+        </div>
+        <div className="card-body space-y-4">
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-xs text-gray-500 mb-1.5">选择检测批次查看综合质量</label>
+              <select
+                className="input-field w-full"
+                value={overviewInspectionId}
+                onChange={(e) => setOverviewInspectionId(e.target.value)}
+              >
+                <option value="">-- 选择尺寸检测批次 --</option>
+                {inspectionBatches.map((b) => (
+                  <option key={b.id} value={b.id}>{b.batchNo}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {!overviewInspectionId ? (
+            <div className="text-center py-6 text-gray-500 text-sm">
+              请选择一个尺寸检测批次查看综合质量判定
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
+                <div className="p-3 rounded-lg bg-surface-lighter/50 border border-surface-border">
+                  <div className="text-xs text-gray-500 mb-1">尺寸检测 (内径/外径/截面)</div>
+                  {inspectionDetail ? (
+                    <div className="space-y-0.5 mt-2 text-sm">
+                    <div>
+                      <span className="text-gray-400">内径:</span>
+                      <span className="ml-1">
+                        {inspectionDetail.innerDiameter}
+                      </span>
+                      <span className={`ml-1 ${resultClass(inspectionDetail.innerDiameterResult)}`}>
+                        {inspectionDetail.innerDiameterResult === "pass" ? "✓" : "✗"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">外径:</span>
+                      <span className="ml-1">
+                        {inspectionDetail.outerDiameter}
+                      </span>
+                      <span className={`ml-1 ${resultClass(inspectionDetail.outerDiameterResult)}`}>
+                        {inspectionDetail.outerDiameterResult === "pass" ? "✓" : "✗"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">截面:</span>
+                      <span className="ml-1">
+                        {inspectionDetail.crossSection}
+                      </span>
+                      <span className={`ml-1 ${resultClass(inspectionDetail.crossSectionResult)}`}>
+                        {inspectionDetail.crossSectionResult === "pass" ? "✓" : "✗"}
+                      </span>
+                    </div>
+                    <div className="pt-1 border-t border-surface-border mt-2">
+                      <span className={`${resultClass(inspectionDetail.overallResult)} font-medium`}>
+                        总体: {inspectionDetail.overallResult === "pass" ? "合格" : "不合格"}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                    <div className="text-sm text-gray-500 mt-2">未做</div>
+                  )}
+                </div>
+
+                <div className="p-3 rounded-lg bg-surface-lighter/50 border border-surface-border">
+                  <div className="text-xs text-gray-500 mb-1">硬度 (Shore A)</div>
+                  {hardnessTest ? (
+                    <div className="space-y-0.5 mt-2 text-sm">
+                      <div>
+                        <span className="text-gray-400">实测:</span>
+                        <span className="ml-1">{hardnessTest.hardnessShoreA}</span>
+                        <span className="text-gray-500 text-xs ml-1">/ {hardnessTest.hardnessTarget}</span>
+                      </div>
+                      <div className={`${resultClass(hardnessTest.hardnessResult)}`}>
+                        判定: {hardnessTest.hardnessResult === "pass" ? "合格" : "不合格"}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500 mt-2">未做</div>
+                  )}
+                </div>
+
+                <div className="p-3 rounded-lg bg-surface-lighter/50 border border-surface-border">
+                  <div className="text-xs text-gray-500 mb-1">拉伸强度 (MPa)</div>
+                  {tensileTest ? (
+                    <div className="space-y-0.5 mt-2 text-sm">
+                      <div>
+                        <span className="text-gray-400">实测:</span>
+                        <span className="ml-1">{tensileTest.tensileStrength}</span>
+                        <span className="text-gray-500 text-xs ml-1">/ {tensileTest.tensileStrengthTarget}</span>
+                      </div>
+                      <div className={`${resultClass(tensileTest.tensileStrengthResult)}`}>
+                        判定: {tensileTest.tensileStrengthResult === "pass" ? "合格" : "不合格"}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500 mt-2">未做</div>
+                  )}
+                </div>
+
+                <div className="p-3 rounded-lg bg-surface-lighter/50 border border-surface-border">
+                  <div className="text-xs text-gray-500 mb-1">延伸率 (%)</div>
+                  {tensileTest ? (
+                    <div className="space-y-0.5 mt-2 text-sm">
+                      <div>
+                        <span className="text-gray-400">实测:</span>
+                        <span className="ml-1">{tensileTest.elongationAtBreak}%</span>
+                        <span className="text-gray-500 text-xs ml-1">/ {tensileTest.elongationTarget}%</span>
+                      </div>
+                      <div className={`${resultClass(tensileTest.elongationResult)}`}>
+                        判定: {tensileTest.elongationResult === "pass" ? "合格" : "不合格"}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500 mt-2">未做</div>
+                  )}
+                </div>
+
+                <div className="p-3 rounded-lg bg-surface-lighter/50 border border-surface-border">
+                  <div className="text-xs text-gray-500 mb-1">压缩变形 (%)</div>
+                  {compressionTest ? (
+                    <div className="space-y-0.5 mt-2 text-sm">
+                      <div>
+                        <span className="text-gray-400">实测:</span>
+                        <span className="ml-1">{compressionTest.compressionSet}%</span>
+                        <span className="text-gray-500 text-xs ml-1">≤ {compressionTest.compressionSetTarget}%</span>
+                      </div>
+                      <div className={`${resultClass(compressionTest.compressionSetResult)}`}>
+                        判定: {compressionTest.compressionSetResult === "pass" ? "合格" : "不合格"}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500 mt-2">未做</div>
+                  )}
+                </div>
+
+                <div className="p-3 rounded-lg bg-surface-lighter/50 border border-amber/40">
+                  <div className="text-xs text-gray-500 mb-1">放行建议</div>
+                  <div className="flex items-center gap-2 mt-2">
+                    {releaseAdvice().icon}
+                    <span className={`font-semibold text-base ${releaseAdvice().color}`}>
+                      {releaseAdvice().label}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-xs text-gray-500 pt-2 border-t border-surface-border">
+                提示:综合判定取尺寸检测、硬度、拉伸强度、延伸率、压缩变形五项同时合格才算整体合格。如有任一项不合格,建议报废或返工。
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -424,7 +639,7 @@ export default function PhysicalTesting() {
                   {activeTab === "tensile" && (
                     <>
                       <Bar dataKey="拉伸强度" fill="#E8A317" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="目标" fill="#5B8DEF" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="目标强度" fill="#5B8DEF" radius={[4, 4, 0, 0]} />
                     </>
                   )}
                   {activeTab === "compression" && (
@@ -437,91 +652,89 @@ export default function PhysicalTesting() {
               </ResponsiveContainer>
             </div>
           </div>
-        </div>
-
-        <div className="card">
-          <div className="card-header">
-            <h3 className="font-display font-semibold text-sm">试验记录</h3>
-          </div>
-          <div className="card-body">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[500px]">
-                <thead>
-                  <tr className="border-b border-surface-border">
-                    <th className="table-header">批次号</th>
-                    {activeTab === "hardness" && <th className="table-header">硬度</th>}
-                    {activeTab === "tensile" && (
-                      <>
-                        <th className="table-header">拉伸强度</th>
-                        <th className="table-header">延伸率</th>
-                      </>
-                    )}
-                    {activeTab === "compression" && <th className="table-header">压缩变形</th>}
-                    <th className="table-header">结果</th>
-                    <th className="table-header">时间</th>
-                    <th className="table-header">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((r) => {
-                    const combinedResult = activeTab === "tensile" ? getCombinedTensileResult(r) : r.overallResult;
-                    return (
-                      <tr
-                        key={r.id}
-                        className="border-b border-surface-border last:border-0 hover:bg-surface-lighter/50 cursor-pointer"
-                        onClick={() => setSelectedRecord(r)}
-                      >
-                        <td className="table-cell font-mono text-amber">{r.batchNo}</td>
-                        {activeTab === "hardness" && (
-                          <td className="table-cell">{r.hardnessShoreA} <span className="text-gray-600 text-xs">/ {r.hardnessTarget}</span></td>
-                        )}
-                        {activeTab === "tensile" && (
-                          <>
-                            <td className="table-cell">
-                              <div className="flex items-center gap-2">
-                                <span>{r.tensileStrength} <span className="text-gray-600 text-xs">/ {r.tensileStrengthTarget}</span></span>
-                                <span className={r.tensileStrengthResult === "pass" ? "badge-pass" : "badge-fail"}>
-                                  {r.tensileStrengthResult === "pass" ? "合格" : "不合格"}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="table-cell">
-                              <div className="flex items-center gap-2">
-                                <span>{r.elongationAtBreak}% <span className="text-gray-600 text-xs">/ {r.elongationTarget}%</span></span>
-                                {r.elongationResult != null && (
-                                  <span className={r.elongationResult === "pass" ? "badge-pass" : "badge-fail"}>
-                                    {r.elongationResult === "pass" ? "合格" : "不合格"}
+          <div className="card">
+            <div className="card-header">
+              <h3 className="font-display font-semibold text-sm">试验记录</h3>
+            </div>
+            <div className="card-body">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[500px]">
+                  <thead>
+                    <tr className="border-b border-surface-border">
+                      <th className="table-header">批次号</th>
+                      {activeTab === "hardness" && <th className="table-header">硬度</th>}
+                      {activeTab === "tensile" && (
+                        <>
+                          <th className="table-header">拉伸强度</th>
+                          <th className="table-header">延伸率</th>
+                        </>
+                      )}
+                      {activeTab === "compression" && <th className="table-header">压缩变形</th>}
+                      <th className="table-header">结果</th>
+                      <th className="table-header">时间</th>
+                      <th className="table-header">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((r) => {
+                      return (
+                        <tr
+                          key={r.id}
+                          className="border-b border-surface-border last:border-0 hover:bg-surface-lighter/50 cursor-pointer"
+                          onClick={() => setSelectedRecord(r)}
+                        >
+                          <td className="table-cell font-mono text-amber">{r.batchNo}</td>
+                          {activeTab === "hardness" && (
+                            <td className="table-cell">{r.hardnessShoreA} <span className="text-gray-600 text-xs">/ {r.hardnessTarget}</span></td>
+                          )}
+                          {activeTab === "tensile" && (
+                            <>
+                              <td className="table-cell">
+                                <div className="flex items-center gap-2">
+                                  <span>{r.tensileStrength} <span className="text-gray-600 text-xs">/ {r.tensileStrengthTarget}</span></span>
+                                  <span className={r.tensileStrengthResult === "pass" ? "badge-pass" : "badge-fail"}>
+                                    {r.tensileStrengthResult === "pass" ? "合格" : "不合格"}
                                   </span>
-                                )}
-                              </div>
-                            </td>
-                          </>
-                        )}
-                        {activeTab === "compression" && (
-                          <td className="table-cell">{r.compressionSet}% <span className="text-gray-600 text-xs">≤{r.compressionSetTarget}%</span></td>
-                        )}
-                        <td className="table-cell">
-                          <span className={combinedResult === "pass" ? "badge-pass" : "badge-fail"}>
-                            {combinedResult === "pass" ? "合格" : "不合格"}
-                          </span>
-                        </td>
-                        <td className="table-cell text-gray-400">{r.testedAt}</td>
-                        <td className="table-cell">
-                          <button
-                            className="p-1.5 rounded-md hover:bg-surface-lighter text-gray-400 hover:text-steel transition-colors"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedRecord(r);
-                            }}
-                          >
-                            <Eye size={16} />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                                </div>
+                              </td>
+                              <td className="table-cell">
+                                <div className="flex items-center gap-2">
+                                  <span>{r.elongationAtBreak}% <span className="text-gray-600 text-xs">/ {r.elongationTarget}%</span></span>
+                                  {r.elongationResult != null && (
+                                    <span className={r.elongationResult === "pass" ? "badge-pass" : "badge-fail"}>
+                                      {r.elongationResult === "pass" ? "合格" : "不合格"}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                            </>
+                          )}
+                          {activeTab === "compression" && (
+                            <td className="table-cell">{r.compressionSet}% <span className="text-gray-600 text-xs">≤{r.compressionSetTarget}%</span></td>
+                          )}
+                          <td className="table-cell">
+                            <span className={r.overallResult === "pass" ? "badge-pass" : "badge-fail"}>
+                              {r.overallResult === "pass" ? "合格" : "不合格"}
+                            </span>
+                          </td>
+                          <td className="table-cell text-gray-400">{r.testedAt}</td>
+                          <td className="table-cell">
+                            <button
+                              className="p-1.5 rounded-md hover:bg-surface-lighter text-gray-400 hover:text-steel transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedRecord(r);
+                              }}
+                            >
+                              <Eye size={16} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>

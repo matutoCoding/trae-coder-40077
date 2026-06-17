@@ -22,14 +22,36 @@ function convertKeys<T>(obj: unknown): T {
   return obj as T
 }
 
+export interface ApiResult<T> {
+  success: boolean;
+  data: T | null;
+  error: string | null;
+}
+
 export async function apiFetch<T>(url: string, options?: RequestInit): Promise<T | null> {
   try {
     const r = await fetch(url, options)
-    if (!r.ok) return null
     const json = await r.json()
+    if (!r.ok || json.success === false) {
+      return null
+    }
     const data = json?.data ?? json
     return convertKeys<T>(data)
   } catch {
     return null
+  }
+}
+
+export async function apiFetchFull<T>(url: string, options?: RequestInit): Promise<ApiResult<T>> {
+  try {
+    const r = await fetch(url, options)
+    const json = await r.json()
+    if (!r.ok || json.success === false) {
+      return { success: false, data: null, error: json.error || '请求失败' }
+    }
+    const data = json?.data ?? json
+    return { success: true, data: convertKeys<T>(data), error: null }
+  } catch (e) {
+    return { success: false, data: null, error: '网络错误,请检查服务器连接' }
   }
 }

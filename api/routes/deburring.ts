@@ -43,22 +43,42 @@ router.post('/', (req: Request, res: Response): void => {
   const db = getDb()
   const { batch_no, vulcanization_batch_id, method, operator, total_count } = req.body
   if (!vulcanization_batch_id || !method || !operator) {
-    res.status(400).json({ success: false, error: '硫化批次、修边方式和操作员为必填项' })
+    res.status(400).json({ success: false, error: '请选择关联硫化批次、去边方式并填写操作员' })
     return
   }
-  if (total_count === undefined || total_count === null || typeof total_count !== 'number' || total_count <= 0 || !Number.isInteger(total_count)) {
-    res.status(400).json({ success: false, error: '总数必须为大于0的正整数' })
+  if (!vulcanization_batch_id || String(vulcanization_batch_id).trim() === '') {
+    res.status(400).json({ success: false, error: '关联批次未选对,请重新选择一个有效的硫化批次' })
+    return
+  }
+  if (total_count === undefined || total_count === null || total_count === '' || Number.isNaN(Number(total_count))) {
+    res.status(400).json({ success: false, error: '数量不对,请填写一个大于0的正整数' })
+    return
+  }
+  const tc = Number(total_count)
+  if (!Number.isInteger(tc) || tc <= 0) {
+    res.status(400).json({ success: false, error: '数量不对,总数必须是大于0的正整数' })
+    return
+  }
+  if (tc > 100000) {
+    res.status(400).json({ success: false, error: '数量不对,总数超过上限(100000),请核对后重新输入' })
     return
   }
   const vulc = db.prepare('SELECT id FROM vulcanization_batches WHERE id = ?').get(vulcanization_batch_id)
   if (!vulc) {
-    res.status(400).json({ success: false, error: '硫化批次不存在' })
+    res.status(400).json({ success: false, error: '关联批次未选对,该硫化批次在系统中不存在' })
     return
   }
-  const finalBatchNo = batch_no || generateBatchNo('DB-', 'deburring_batches')
+  if (batch_no && batch_no.trim() !== '') {
+    const dup = db.prepare('SELECT id FROM deburring_batches WHERE batch_no = ?').get(batch_no.trim())
+    if (dup) {
+      res.status(400).json({ success: false, error: `批次号重复: ${batch_no} 已经存在,请更换或留空自动生成` })
+      return
+    }
+  }
+  const finalBatchNo = batch_no ? batch_no.trim() : generateBatchNo('DB-', 'deburring_batches')
   const id = uuidv4()
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19)
-  db.prepare('INSERT INTO deburring_batches (id, batch_no, vulcanization_batch_id, method, operator, total_count, start_time, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, finalBatchNo, vulcanization_batch_id, method, operator, total_count, now, 'in_progress', now)
+  db.prepare('INSERT INTO deburring_batches (id, batch_no, vulcanization_batch_id, method, operator, total_count, start_time, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, finalBatchNo, vulcanization_batch_id, method, operator, tc, now, 'in_progress', now)
   const batch = db.prepare('SELECT * FROM deburring_batches WHERE id = ?').get(id)
   res.status(201).json({ success: true, data: batch })
 })

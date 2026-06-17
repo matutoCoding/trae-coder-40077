@@ -110,12 +110,23 @@ router.get('/:stage/:id', (req: Request, res: Response): void => {
     }
   }
 
+  let lastStageWithData = -1
+  for (let i = 0; i < chain.length; i++) {
+    if (chain[i].data) lastStageWithData = i
+  }
+  const nextStage = lastStageWithData < chain.length - 1 ? lastStageWithData + 1 : null
+  const isStuck = lastStageWithData < chain.length - 1
+
   res.json({
     success: true,
     data: {
       chain,
       current_stage_index: stageIdx,
       current_stage_name: STAGE_NAMES[stage],
+      last_stage_with_data: lastStageWithData,
+      next_stage_key: nextStage !== null ? STAGE_CONFIG[nextStage].key : null,
+      next_stage_name: nextStage !== null ? STAGE_NAMES[STAGE_CONFIG[nextStage].key] : null,
+      is_stuck: isStuck,
     },
   })
 })
